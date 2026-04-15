@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/campaign_provider.dart';
 import '../providers/restaurant_provider.dart';
+import '../services/api_service.dart';
 import '../widgets/loading_indicator.dart';
 import 'creatives_gallery_screen.dart';
 
@@ -17,13 +18,12 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCampaigns();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCampaigns());
   }
 
   void _loadCampaigns() {
     final restaurantProvider = context.read<RestaurantProvider>();
     final campaignProvider = context.read<CampaignProvider>();
-
     if (restaurantProvider.restaurant != null) {
       campaignProvider.loadCampaigns(restaurantProvider.restaurant!.id);
     }
@@ -32,11 +32,16 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0F0F1A),
       appBar: AppBar(
-        title: const Text('Campaigns'),
+        backgroundColor: const Color(0xFF1A1A2E),
+        foregroundColor: Colors.white,
+        title: const Text('Campaign History',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _loadCampaigns,
           ),
         ],
@@ -46,60 +51,84 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
           if (provider.isLoading) {
             return const LoadingIndicator(message: 'Loading campaigns...');
           }
-
           if (provider.campaigns.isEmpty) {
-            return _buildEmptyState();
+            return _buildEmpty();
           }
-
-          return _buildCampaignList(provider);
+          return _buildList(provider);
         },
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmpty() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.campaign_outlined, size: 80, color: Colors.grey[400]),
+          const Text('📋', style: TextStyle(fontSize: 64)),
           const SizedBox(height: 16),
-          Text(
-            'No campaigns yet',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(color: Colors.grey[600]),
-          ),
+          const Text('No campaigns yet',
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          Text(
-            'Create your first campaign from the home screen',
-            style: TextStyle(color: Colors.grey[500]),
+          const Text('Create your first campaign from home',
+              style: TextStyle(color: Colors.white38, fontSize: 14)),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF6B35)),
+            child: const Text('Go Back', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCampaignList(CampaignProvider provider) {
+  Widget _buildList(CampaignProvider provider) {
     return RefreshIndicator(
+      color: const Color(0xFFFF6B35),
+      backgroundColor: const Color(0xFF1A1A2E),
       onRefresh: () async => _loadCampaigns(),
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: provider.campaigns.length,
-        itemBuilder: (context, index) {
-          final campaign = provider.campaigns[index];
-          return _buildCampaignCard(campaign, provider);
-        },
+        itemBuilder: (context, index) =>
+            _buildCard(provider.campaigns[index], provider),
       ),
     );
   }
 
-  Widget _buildCampaignCard(campaign, CampaignProvider provider) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: () => _viewCampaign(campaign),
-        borderRadius: BorderRadius.circular(12),
+  Widget _buildCard(campaign, CampaignProvider provider) {
+    final platformIcons = {
+      'instagram': Icons.camera_alt,
+      'facebook': Icons.facebook,
+      'whatsapp': Icons.chat,
+    };
+
+    final typeEmojis = {
+      'daily': '☀️',
+      'new_arrivals': '🆕',
+      'weekend': '🎉',
+      'festive': '✨',
+      'combo': '🤝',
+    };
+
+    return GestureDetector(
+      onTap: () => _viewCampaign(campaign),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A2E),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: campaign.status == 'completed'
+                ? const Color(0xFF4ECDC4).withValues(alpha: 0.3)
+                : Colors.white12,
+          ),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -107,53 +136,77 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
             children: [
               Row(
                 children: [
-                  _buildStatusBadge(campaign.status),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      campaign.campaignType.toUpperCase(),
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
                   Text(
-                    campaign.platform.toUpperCase(),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                    '${typeEmojis[campaign.campaignType] ?? '📋'} ${campaign.campaignType.toUpperCase()}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15),
+                  ),
+                  const Spacer(),
+                  _buildStatus(campaign.status),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(platformIcons[campaign.platform] ?? Icons.devices,
+                      color: Colors.white54, size: 16),
+                  const SizedBox(width: 6),
+                  Text(campaign.platform.toUpperCase(),
+                      style:
+                          const TextStyle(color: Colors.white54, fontSize: 12)),
+                  const SizedBox(width: 16),
+                  const Icon(Icons.photo_library,
+                      color: Colors.white54, size: 16),
+                  const SizedBox(width: 6),
+                  Text('${campaign.totalCreatives} creatives',
+                      style:
+                          const TextStyle(color: Colors.white54, fontSize: 12)),
+                  const Spacer(),
+                  Text(
+                    _formatDate(campaign.createdAt),
+                    style: const TextStyle(color: Colors.white38, fontSize: 12),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(Icons.photo_library, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${campaign.totalCreatives} creatives',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _viewCampaign(campaign),
+                      icon: const Icon(Icons.visibility,
+                          size: 16, color: Color(0xFF4ECDC4)),
+                      label: const Text('View Creatives',
+                          style: TextStyle(
+                              color: Color(0xFF4ECDC4), fontSize: 13)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFF4ECDC4)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
                   ),
-                  const Spacer(),
-                  Text(
-                    _formatDate(campaign.createdAt),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.grey[500]),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _downloadZip(campaign),
+                      icon: const Icon(Icons.download,
+                          size: 16, color: Colors.white),
+                      label: const Text('Download ZIP',
+                          style: TextStyle(color: Colors.white, fontSize: 13)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF6B35),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
                   ),
                 ],
               ),
-              if (campaign.zipUrl != null) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _downloadZip(campaign.zipUrl!),
-                    icon: const Icon(Icons.download, size: 18),
-                    label: const Text('Download ZIP'),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -161,63 +214,71 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
     );
   }
 
-  Widget _buildStatusBadge(String status) {
-    Color color;
-    IconData icon;
-
-    switch (status) {
-      case 'completed':
-        color = Colors.green;
-        icon = Icons.check_circle;
-        break;
-      case 'failed':
-        color = Colors.red;
-        icon = Icons.error;
-        break;
-      default:
-        color = Colors.orange;
-        icon = Icons.hourglass_empty;
-    }
+  Widget _buildStatus(String status) {
+    final cfg = {
+          'completed': {
+            'color': const Color(0xFF4ECDC4),
+            'icon': Icons.check_circle,
+            'label': 'Done'
+          },
+          'processing': {
+            'color': Colors.orange,
+            'icon': Icons.hourglass_empty,
+            'label': 'Processing'
+          },
+          'failed': {
+            'color': Colors.redAccent,
+            'icon': Icons.error,
+            'label': 'Failed'
+          },
+        }[status] ??
+        {'color': Colors.grey, 'icon': Icons.help_outline, 'label': status};
 
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(4),
+        color: (cfg['color'] as Color).withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border:
+            Border.all(color: (cfg['color'] as Color).withValues(alpha: 0.5)),
       ),
-      child: Icon(icon, size: 16, color: color),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(cfg['icon'] as IconData, color: cfg['color'] as Color, size: 12),
+          const SizedBox(width: 4),
+          Text(cfg['label'] as String,
+              style: TextStyle(
+                  color: cfg['color'] as Color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold)),
+        ],
+      ),
     );
   }
 
   String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-
-    if (diff.inDays == 0) {
-      return 'Today';
-    } else if (diff.inDays == 1) {
-      return 'Yesterday';
-    } else if (diff.inDays < 7) {
-      return '${diff.inDays} days ago';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
-    }
+    final diff = DateTime.now().difference(date);
+    if (diff.inDays == 0) return 'Today';
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${date.day}/${date.month}/${date.year}';
   }
 
-  void _viewCampaign(campaign) async {
+  Future<void> _viewCampaign(campaign) async {
     final provider = context.read<CampaignProvider>();
+    provider.setActiveCampaign(campaign);
     await provider.loadCampaignCreatives(campaign.id);
-
-    if (mounted && provider.currentCreatives.isNotEmpty) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const CreativesGalleryScreen()),
-      );
+    if (mounted) {
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const CreativesGalleryScreen()));
     }
   }
 
-  void _downloadZip(String url) async {
-    final uri = Uri.parse(url);
+  Future<void> _downloadZip(campaign) async {
+    final zipUrl =
+        campaign.zipUrl ?? '${ApiService.baseUrl}/api/download/${campaign.id}';
+    final uri = Uri.parse(zipUrl);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }

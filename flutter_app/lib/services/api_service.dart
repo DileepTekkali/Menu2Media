@@ -1,41 +1,74 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import '../models/restaurant.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/menu_item.dart';
 import '../models/campaign.dart';
 import '../models/creative.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:3000';
+  static String get baseUrl =>
+      dotenv.env['API_BASE_URL'] ?? 'http://localhost:3000';
 
-  Future<Map<String, dynamic>> scrapeRestaurant(String url, String name) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/scrape'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'restaurant_url': url, 'restaurant_name': name}),
-    );
+  Map<String, String> get _headers => {'Content-Type': 'application/json'};
 
-    if (response.statusCode == 200) {
+  Future<Map<String, dynamic>> _post(
+      String path, Map<String, dynamic> body) async {
+    try {
+      final uri = Uri.parse('$baseUrl$path');
+      print('API POST: $uri');
+      final response = await http
+          .post(
+            uri,
+            headers: _headers,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(minutes: 3));
+      print('API Response status: ${response.statusCode}');
       return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to scrape: ${response.body}');
+    } catch (e) {
+      print('API Error: $e');
+      return {'success': false, 'error': e.toString()};
     }
   }
 
+  Future<Map<String, dynamic>> _get(String path) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl$path'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: 60));
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> scrapeRestaurant(String url, String name) async {
+    return _post(
+        '/api/scrape', {'restaurant_url': url, 'restaurant_name': name});
+  }
+
   Future<Map<String, dynamic>> processMenu(String restaurantId) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/process-menu'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'restaurant_id': restaurantId,
-        'options': {
-          'remove_duplicates': true,
-          'generate_missing_descriptions': true,
-          'auto_categorize': true,
-        },
-      }),
-    );
-    return jsonDecode(response.body);
+    return _post('/api/process-menu', {
+      'restaurant_id': restaurantId,
+      'options': {
+        'remove_duplicates': true,
+        'generate_missing_descriptions': true,
+        'auto_categorize': true,
+      },
+    });
+  }
+
+  Future<List<MenuItem>> getMenuItems(String restaurantId) async {
+    final data = await _get('/api/menu/$restaurantId');
+    if (data['success'] == true) {
+      return (data['menu_items'] as List)
+          .map((item) => MenuItem.fromJson(item))
+          .toList();
+    }
+    return [];
   }
 
   Future<Map<String, dynamic>> selectContent({
@@ -43,39 +76,24 @@ class ApiService {
     required String campaignType,
     int dishCount = 5,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/select-content'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'restaurant_id': restaurantId,
-        'campaign_type': campaignType,
-        'dish_count': dishCount,
-      }),
-    );
-    return jsonDecode(response.body);
+    return _post('/api/select-content', {
+      'restaurant_id': restaurantId,
+      'campaign_type': campaignType,
+      'dish_count': dishCount,
+    });
   }
 
   Future<Map<String, dynamic>> generateCaptions(
     List<Map<String, dynamic>> dishes,
     String tone,
   ) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/generate-captions'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'dishes': dishes, 'tone': tone}),
-    );
-    return jsonDecode(response.body);
+    return _post('/api/generate-captions', {'dishes': dishes, 'tone': tone});
   }
 
   Future<Map<String, dynamic>> generateImages(
     List<Map<String, dynamic>> dishes,
   ) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/generate-images'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'dishes': dishes}),
-    );
-    return jsonDecode(response.body);
+    return _post('/api/generate-images', {'dishes': dishes});
   }
 
   Future<Map<String, dynamic>> createCreatives({
@@ -85,51 +103,70 @@ class ApiService {
     String? campaignType,
     String? platform,
     List<String>? colors,
+    String? tone,
+    List<String>? exportTypes,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/create-creatives'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'restaurant_id': restaurantId,
-        'dishes': dishes,
-        'formats': formats,
-        'branding': {
-          'campaign_type': campaignType,
-          'platform': platform,
-          'colors': colors ?? ['#FF6B6B', '#4ECDC4'],
-        },
-      }),
-    );
-    return jsonDecode(response.body);
+    return _post('/api/create-creatives', {
+      'restaurant_id': restaurantId,
+      'dishes': dishes,
+      'formats': formats,
+      'export_types': exportTypes ?? ['png'],
+      'branding': {
+        'campaign_type': campaignType,
+        'platform': platform,
+        'colors': colors ?? ['#FF6B35', '#2E4057'],
+        'tone': tone ?? 'casual',
+      },
+    });
   }
 
   Future<List<Campaign>> getCampaigns(String restaurantId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/campaigns/$restaurantId'),
-    );
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final campaigns =
-          (data['campaigns'] as List).map((c) => Campaign.fromJson(c)).toList();
-      return campaigns;
-    } else {
-      throw Exception('Failed to fetch campaigns');
+    final data = await _get('/api/campaigns/$restaurantId');
+    if (data['success'] == true) {
+      return (data['campaigns'] as List)
+          .map((c) => Campaign.fromJson(c))
+          .toList();
     }
+    return [];
   }
 
   Future<List<Creative>> getCampaignCreatives(String campaignId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/campaigns/$campaignId/creatives'),
-    );
+    final data = await _get('/api/campaign/$campaignId/creatives');
+    if (data['success'] == true) {
+      return (data['creatives'] as List)
+          .map((c) => Creative.fromJson(c))
+          .toList();
+    }
+    return [];
+  }
 
-    if (response.statusCode == 200) {
+  String getDownloadZipUrl(String campaignId) {
+    return '$baseUrl/api/download/$campaignId';
+  }
+
+  Future<bool> updateBranding({
+    required String restaurantId,
+    List<String>? brandColors,
+    String? theme,
+    String? logoUrl,
+  }) async {
+    try {
+      final body = <String, dynamic>{};
+      if (brandColors != null) body['brand_colors'] = brandColors;
+      if (theme != null) body['theme'] = theme;
+      if (logoUrl != null) body['logo_url'] = logoUrl;
+
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/api/restaurants/$restaurantId/branding'),
+            headers: _headers,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 30));
       final data = jsonDecode(response.body);
-      final creatives =
-          (data['creatives'] as List).map((c) => Creative.fromJson(c)).toList();
-      return creatives;
-    } else {
-      throw Exception('Failed to fetch creatives');
+      return data['success'] == true;
+    } catch (e) {
+      return false;
     }
   }
 }

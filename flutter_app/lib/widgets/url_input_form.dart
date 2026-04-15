@@ -36,8 +36,11 @@ class _UrlInputFormState extends State<UrlInputForm> {
     if (value == null || value.isEmpty) {
       return 'Please enter a restaurant URL';
     }
-    final uri = Uri.tryParse(value);
-    if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
+    final trimmed = value.trim();
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      return 'URL must start with http:// or https://';
+    }
+    if (!trimmed.contains('.')) {
       return 'Please enter a valid URL';
     }
     return null;

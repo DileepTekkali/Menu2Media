@@ -20,12 +20,18 @@ class CampaignProvider extends ChangeNotifier {
   String? get error => _error;
   double get progress => _progress;
 
+  void setActiveCampaign(campaign) {
+    _activeCampaign = campaign;
+    notifyListeners();
+  }
+
   Future<void> createCampaign({
     required String restaurantId,
     required String campaignType,
     required List<String> formats,
     int dishCount = 5,
     String tone = 'casual',
+    List<String>? colors,
   }) async {
     _isLoading = true;
     _error = null;
@@ -33,6 +39,7 @@ class CampaignProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Step 1: Select dishes
       _progress = 0.1;
       notifyListeners();
 
@@ -46,37 +53,40 @@ class CampaignProvider extends ChangeNotifier {
         throw Exception(contentResult['error'] ?? 'Failed to select content');
       }
 
-      _progress = 0.3;
+      _progress = 0.25;
       notifyListeners();
 
       final selectedDishes = (contentResult['selected_dishes'] as List)
           .map((d) => d as Map<String, dynamic>)
           .toList();
 
-      final captionsResult = await _apiService.generateCaptions(
-        selectedDishes,
-        tone,
-      );
+      // Step 2: Generate captions
+      final captionsResult =
+          await _apiService.generateCaptions(selectedDishes, tone);
 
-      _progress = 0.5;
+      _progress = 0.45;
       notifyListeners();
 
       final captions = captionsResult['captions'] as List? ?? [];
 
+      // Merge captions into dishes by index or dish_id
       for (var i = 0; i < selectedDishes.length; i++) {
         final dish = selectedDishes[i];
+        // Try match by dish_id first, then fall back to position
         final caption = captions.firstWhere(
           (c) => c['dish_id'] == dish['id'],
-          orElse: () => {
-            'headline': dish['name'],
-            'caption': 'Try our delicious ${dish['name']}!',
-            'cta': 'Order Now',
-          },
+          orElse: () => i < captions.length ? captions[i] : <String, dynamic>{},
         );
-        selectedDishes[i] = {...dish, ...caption};
+        selectedDishes[i] = {
+          ...dish,
+          'headline': caption['headline'] ?? dish['name'],
+          'caption': caption['caption'] ?? 'Try our ${dish['name']}!',
+          'cta': caption['cta'] ?? '📍 Order Now',
+        };
       }
 
-      _progress = 0.7;
+      // Step 3: Generate food images
+      _progress = 0.65;
       notifyListeners();
 
       final imagesResult = await _apiService.generateImages(selectedDishes);
@@ -86,12 +96,15 @@ class CampaignProvider extends ChangeNotifier {
         final dish = selectedDishes[i];
         final image = images.firstWhere(
           (img) => img['dish_id'] == dish['id'],
-          orElse: () => {'image_url': null},
+          orElse: () => <String, dynamic>{'image_url': null},
         );
-        selectedDishes[i] = {...dish, 'image_url': image['image_url']};
+        if (image['image_url'] != null) {
+          selectedDishes[i] = {...dish, 'image_url': image['image_url']};
+        }
       }
 
-      _progress = 0.9;
+      // Step 4: Build creatives
+      _progress = 0.85;
       notifyListeners();
 
       final creativesResult = await _apiService.createCreatives(
@@ -100,6 +113,8 @@ class CampaignProvider extends ChangeNotifier {
         formats: formats,
         campaignType: campaignType,
         platform: formats.contains('facebook_post') ? 'facebook' : 'instagram',
+        colors: colors ?? ['#FF6B35', '#2E4057'],
+        tone: tone,
       );
 
       _progress = 1.0;
@@ -109,16 +124,35 @@ class CampaignProvider extends ChangeNotifier {
           id: creativesResult['campaign_id'],
           restaurantId: restaurantId,
           campaignType: campaignType,
-          platform: formats.contains('facebook_post')
-              ? 'facebook'
-              : 'instagram',
+          platform:
+              formats.contains('facebook_post') ? 'facebook' : 'instagram',
           status: 'completed',
           totalCreatives: creativesResult['total_creatives'] ?? 0,
         );
+
+        // If creatives returned with base64, build local Creative objects
+        final raw = creativesResult['creatives'] as List? ?? [];
+        if (raw.isNotEmpty && raw.first['image_url'] != null) {
+          // Will load via loadCampaignCreatives
+        } else if (raw.isNotEmpty && raw.first['image_b64'] != null) {
+          // Store base64 creatives for local display
+          _currentCreatives = raw
+              .map<Creative>((c) => Creative(
+                    id: '${c['menu_item_id']}_${c['format']}',
+                    campaignId: creativesResult['campaign_id'],
+                    menuItemId: c['menu_item_id'],
+                    format: c['format'] ?? 'instagram_square',
+                    exportType: c['export_type'] ?? 'png',
+                    imageUrl: c['image_url'] ?? '',
+                    captionHeadline: c['menu_item_name'],
+                    captionBody: '',
+                    ctaText: 'Order Now!',
+                  ))
+              .toList();
+        }
       } else {
         throw Exception(
-          creativesResult['error'] ?? 'Failed to create creatives',
-        );
+            creativesResult['error'] ?? 'Failed to create creatives');
       }
     } catch (e) {
       _error = e.toString();
@@ -130,6 +164,7 @@ class CampaignProvider extends ChangeNotifier {
 
   Future<void> loadCampaigns(String restaurantId) async {
     _isLoading = true;
+    _error = null;
     notifyListeners();
 
     try {

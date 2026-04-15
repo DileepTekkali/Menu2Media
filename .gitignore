@@ -3,9 +3,22 @@ node_modules/
 build/
 .serverless/
 *.log
+backend/.local-data/
+backend/output/
 .DS_Store
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+
+# Flutter
+flutter_app/build/
+flutter_app/.dart_tool/
+flutter_app/.packages
+flutter_app/.flutter-plugins
+flutter_app/.flutter-plugins-dependencies
+
+# Backend logs
+*.log
+/tmp/

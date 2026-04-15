@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS restaurants (
   logo_url TEXT,
   brand_colors JSONB DEFAULT '[]',
   theme TEXT DEFAULT 'casual',
+  brand_name TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -38,7 +39,7 @@ CREATE INDEX IF NOT EXISTS idx_menu_bestseller ON menu_items(is_bestseller) WHER
 CREATE TABLE IF NOT EXISTS campaigns (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
-  campaign_type TEXT NOT NULL CHECK (campaign_type IN ('daily', 'weekend', 'festive', 'combo')),
+  campaign_type TEXT NOT NULL CHECK (campaign_type IN ('daily', 'new_arrivals', 'weekend', 'festive', 'combo')),
   platform TEXT NOT NULL CHECK (platform IN ('instagram', 'facebook', 'whatsapp')),
   status TEXT DEFAULT 'processing' CHECK (status IN ('processing', 'completed', 'failed')),
   selected_dishes JSONB DEFAULT '[]',
@@ -55,8 +56,9 @@ CREATE TABLE IF NOT EXISTS creatives (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   campaign_id UUID REFERENCES campaigns(id) ON DELETE CASCADE,
   menu_item_id UUID REFERENCES menu_items(id) ON DELETE SET NULL,
-  format TEXT NOT NULL CHECK (format IN ('instagram_square', 'instagram_story', 'facebook_post')),
-  image_url TEXT NOT NULL,
+  format TEXT NOT NULL CHECK (format IN ('instagram_square', 'instagram_story', 'facebook_post', 'whatsapp_post')),
+  export_type TEXT DEFAULT 'png' CHECK (export_type IN ('png', 'jpg', 'webp')),
+  image_url TEXT,
   caption_headline TEXT,
   caption_body TEXT,
   cta_text TEXT,

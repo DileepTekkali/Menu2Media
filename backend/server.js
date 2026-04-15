@@ -1,10 +1,13 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const scrapeRoutes = require('./routes/scrape');
 const processRoutes = require('./routes/process');
 const generateRoutes = require('./routes/generate');
 const campaignsRoutes = require('./routes/campaigns');
+const downloadRoutes = require('./routes/download');
+const supabase = require('./utils/supabase');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,37 +18,18 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use('/generated', express.static(supabase.storageDir || path.join(__dirname, 'output')));
+app.use('/fixtures', express.static(path.join(__dirname, 'test-fixtures')));
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-app.post('/api/test-data', async (req, res) => {
-  const supabase = require('./utils/supabase');
-  const { restaurant_id } = req.body;
-  
-  const sampleItems = [
-    { name: 'Butter Chicken', category: 'Main Course', price: 320, description: 'Tender chicken in rich tomato gravy', is_bestseller: true },
-    { name: 'Paneer Tikka', category: 'Starters', price: 250, description: 'Grilled cottage cheese with spices', is_bestseller: true },
-    { name: 'Biryani', category: 'Main Course', price: 280, description: 'Fragrant rice with spices and meat', is_bestseller: true },
-    { name: 'Gulab Jamun', category: 'Desserts', price: 120, description: 'Sweet milk dumplings in sugar syrup' },
-    { name: 'Masala Chai', category: 'Beverages', price: 50, description: 'Traditional spiced Indian tea' },
-  ];
-  
-  const items = sampleItems.map(item => ({
-    restaurant_id,
-    ...item
-  }));
-  
-  const { error } = await supabase.from('menu_items').insert(items);
-  
-  res.json({ success: !error, error });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '2.0.0' });
 });
 
 app.use('/api', scrapeRoutes);
 app.use('/api', processRoutes);
 app.use('/api', generateRoutes);
 app.use('/api', campaignsRoutes);
+app.use('/api', downloadRoutes);
 
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -55,8 +39,12 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Restaurant Creatives API running on port ${PORT}`);
+    console.log(`📍 Health: http://localhost:${PORT}/health`);
+    console.log(`📡 Endpoints: /api/scrape | /api/process-menu | /api/select-content | /api/generate-captions | /api/generate-images | /api/create-creatives | /api/download/:id`);
+  });
+}
 
 module.exports = app;

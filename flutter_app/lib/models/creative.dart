@@ -3,6 +3,7 @@ class Creative {
   final String campaignId;
   final String? menuItemId;
   final String format;
+  final String exportType;
   final String imageUrl;
   final String? captionHeadline;
   final String? captionBody;
@@ -17,6 +18,7 @@ class Creative {
     required this.campaignId,
     this.menuItemId,
     required this.format,
+    this.exportType = 'png',
     required this.imageUrl,
     this.captionHeadline,
     this.captionBody,
@@ -34,6 +36,7 @@ class Creative {
       campaignId: json['campaign_id'] ?? '',
       menuItemId: json['menu_item_id'],
       format: json['format'] ?? 'instagram_square',
+      exportType: json['export_type'] ?? 'png',
       imageUrl: json['image_url'] ?? '',
       captionHeadline: json['caption_headline'],
       captionBody: json['caption_body'],
@@ -55,6 +58,7 @@ class Creative {
       'campaign_id': campaignId,
       'menu_item_id': menuItemId,
       'format': format,
+      'export_type': exportType,
       'image_url': imageUrl,
       'caption_headline': captionHeadline,
       'caption_body': captionBody,
@@ -71,6 +75,8 @@ class Creative {
         return 'Instagram Story';
       case 'facebook_post':
         return 'Facebook Post';
+      case 'whatsapp_post':
+        return 'WhatsApp Post';
       default:
         return format;
     }

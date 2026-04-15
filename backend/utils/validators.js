@@ -13,7 +13,7 @@ const validateUuid = (uuid) => {
 };
 
 const validateCampaignType = (type) => {
-  return ['daily', 'weekend', 'festive', 'combo'].includes(type);
+  return ['daily', 'new_arrivals', 'weekend', 'festive', 'combo'].includes(type);
 };
 
 const validatePlatform = (platform) => {
@@ -21,7 +21,7 @@ const validatePlatform = (platform) => {
 };
 
 const validateFormat = (format) => {
-  return ['instagram_square', 'instagram_story', 'facebook_post'].includes(format);
+  return ['instagram_square', 'instagram_story', 'facebook_post', 'whatsapp_post'].includes(format);
 };
 
 const sanitizeString = (str) => {

@@ -19,6 +19,7 @@ dependencies:
   archive: ^3.4.0
   url_launcher: ^6.2.0
   flutter_spinkit: ^5.2.0
+  google_fonts: ^6.1.0
 
 dev_dependencies:
   flutter_test:

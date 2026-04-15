@@ -1,6 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const scraperService = require('../services/scraper');
+const intelligentScraper = require('../services/intelligentScraper');
+let playwrightScraper;
+try {
+  playwrightScraper = require('../services/playwrightScraper');
+} catch (e) {
+  console.warn('Playwright scraper not available:', e.message);
+}
 const supabase = require('../utils/supabase');
 const { validateUrl, sanitizeString } = require('../utils/validators');
 
@@ -17,6 +24,7 @@ router.post('/scrape', async (req, res) => {
 
     const name = restaurant_name || new URL(restaurant_url).hostname.replace('www.', '').split('.')[0];
 
+    // Manage restaurant record
     let restaurant;
     const { data: existing } = await supabase
       .from('restaurants')
@@ -25,6 +33,7 @@ router.post('/scrape', async (req, res) => {
       .single();
 
     if (existing) {
+      // Clear out existing menu items so we start fresh
       await supabase.from('menu_items').delete().eq('restaurant_id', existing.id);
       restaurant = existing;
     } else {
@@ -42,9 +51,18 @@ router.post('/scrape', async (req, res) => {
       restaurant = newRestaurant;
     }
 
-    const scrapeResult = await scraperService.scrapeMenu(restaurant_url);
+    // Attempt intelligent scraper only (uses Playwright with heuristics)
+    let scrapeResult;
+    try {
+      scrapeResult = await intelligentScraper.scrapeMenu(restaurant_url);
+      console.log(`Intelligent scraper result: ${scrapeResult.items?.length || 0} items`);
+    } catch (e) {
+      console.log(`Intelligent scraper failed: ${e.message}`);
+      // Fallback to static scraper only if intelligent fails
+      scrapeResult = await scraperService.scrapeMenu(restaurant_url);
+    }
 
-    if (scrapeResult.items.length > 0) {
+    if (scrapeResult && scrapeResult.items && scrapeResult.items.length > 0) {
       const menuItems = scrapeResult.items.map(item => ({
         restaurant_id: restaurant.id,
         name: sanitizeString(item.name),
@@ -54,6 +72,7 @@ router.post('/scrape', async (req, res) => {
         image_url: item.image_url || null
       }));
 
+      // Insert all found menu items
       const { error: menuError } = await supabase
         .from('menu_items')
         .insert(menuItems);
@@ -61,6 +80,7 @@ router.post('/scrape', async (req, res) => {
       if (menuError) console.error('Menu insert error:', menuError);
     }
 
+    // Refetch the menu items from DB
     const { data: menuItems } = await supabase
       .from('menu_items')
       .select('*')
@@ -70,6 +90,7 @@ router.post('/scrape', async (req, res) => {
       success: true,
       restaurant_id: restaurant.id,
       menu_items_count: menuItems?.length || 0,
+      scrape_method: scrapeResult.method || 'unknown',
       data: {
         restaurant,
         menu_items: menuItems || []
