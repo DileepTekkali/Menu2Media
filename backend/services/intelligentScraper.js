@@ -159,6 +159,7 @@ class IntelligentScraper {
     return await page.evaluate(({ noisePatterns, locationNames }) => {
       const items = [];
       const seen = new Set();
+      let currentCategory = 'Menu';
       
       const isNoise = (name) => {
         const lower = name.toLowerCase().trim();
@@ -174,10 +175,85 @@ class IntelligentScraper {
         return false;
       };
       
+      const isCategoryHeader = (name) => {
+        const lower = name.toLowerCase().trim();
+        const categoryWords = [
+          'starters', 'appetizers', 'mains', 'main course', 'main dishes', 'entrees',
+          'desserts', 'sweet', 'sweets', 'drinks', 'beverages', 'cocktails', 'mocktails',
+          'sides', 'side dishes', 'bread', 'breads', 'soups', 'salads',
+          'breakfast', 'lunch', 'dinner', 'brunch', 'combos', 'combos',
+          'grills', 'tandoor', 'biryani', 'rice', 'curry', 'veg', 'non-veg',
+          'veg items', 'non-veg items', 'special', 'specials', 'chef\'s special',
+          'street food', 'chaat', 'snacks', 'fast food', 'desserts & drinks'
+        ];
+        return categoryWords.some(cat => lower === cat || lower.includes(cat + 's') || lower.includes(' ' + cat));
+      };
+      
       const cleanText = (text) => (text || '').replace(/\s+/g, ' ').trim();
 
-      // Strategy 1: Extract from headings
-      const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      // Get all headings and their hierarchy
+      const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6, [class*="category"], [class*="section"], [class*="heading"]');
+      
+      // Also get items from common menu item selectors
+      const menuItemSelectors = [
+        '[class*="menu-item"]',
+        '[class*="dish-item"]',
+        '[class*="product-item"]',
+        '[class*="food-item"]',
+        '[class*="prices-item"]',
+        'p.p-maintext:not(.p-title)',
+        '[class*="menu-list"] li',
+        '[class*="item"]'
+      ];
+      
+      // Collect menu items from various selectors
+      menuItemSelectors.forEach(selector => {
+        try {
+          const elements = document.querySelectorAll(selector);
+          elements.forEach(el => {
+            if (!el || !el.innerText) return;
+            let name = el.innerText.trim();
+            if (!name || name.length < 3 || name.length > 150) return;
+            
+            // Skip category titles
+            if (el.classList && el.classList.contains('p-title')) return;
+            
+            name = name.replace(/\s*\n\s*/g, ' ').trim();
+            
+            // Skip if already in items
+            if (items.some(i => i.name.toLowerCase() === name.toLowerCase())) return;
+            
+            // Check if this is a category
+            if (isCategoryHeader(name)) {
+              currentCategory = cleanText(name);
+              return;
+            }
+            
+            if (isNoise(name)) return;
+            
+            // Try to get description
+            let description = '';
+            const descEl = el.querySelector('[class*="subtext"], [class*="description"], [class*="desc"]');
+            if (descEl) {
+              description = descEl.innerText.trim();
+            }
+            
+            // Try to get price
+            let price = 0;
+            const priceMatch = el.innerText.match(/[\$₹€£¥]\s*(\d+(?:[.,]\d+)?)/);
+            if (priceMatch) {
+              price = parseFloat(priceMatch[1].replace(/,/g, ''));
+            }
+            
+            items.push({
+              name: cleanText(name),
+              price,
+              description: cleanText(description),
+              category: currentCategory
+            });
+          });
+        } catch(e) {}
+      });
       
       headings.forEach(heading => {
         if (!heading || !heading.innerText) return;
@@ -185,25 +261,38 @@ class IntelligentScraper {
         if (!name || name.length < 2 || name.length > 100) return;
         
         name = name.replace(/\s*\n\s*/g, ' ').trim();
+        
+        // Check if this is a category header
+        if (isCategoryHeader(name)) {
+          currentCategory = cleanText(name);
+          console.log('Found category:', currentCategory);
+          return;
+        }
+        
         if (isNoise(name)) return;
 
         let price = 0;
+        let description = '';
+        let itemCategory = currentCategory;
+        
         try {
           const parent = heading.closest('section, article, div, li') || heading.parentElement;
           const parentText = (parent && parent.innerText) ? parent.innerText : '';
+          
+          // Extract price
           const priceMatch = parentText.match(/[\$₹€£¥]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/);
           if (priceMatch) {
             price = parseFloat(priceMatch[1].replace(/,/g, ''));
           }
-        } catch(e) {}
-
-        let description = '';
-        try {
+          
+          // Try to get description from next sibling
           let nextEl = heading.nextElementSibling;
           if (nextEl && nextEl.tagName && !['H1','H2','H3','H4','H5','H6'].includes(nextEl.tagName)) {
             const nextText = (nextEl.innerText || '').trim();
             if (nextText.length > 0 && nextText.length < 200 && !/[\$₹€£¥]/.test(nextText)) {
-              description = nextText.replace(/\s*\n\s*/g, ' ').trim();
+              if (!isCategoryHeader(nextText)) {
+                description = nextText.replace(/\s*\n\s*/g, ' ').trim();
+              }
             }
           }
         } catch(e) {}
@@ -215,13 +304,12 @@ class IntelligentScraper {
             name: cleanText(name),
             price,
             description: cleanText(description),
-            category: 'Menu'
+            category: itemCategory
           });
         }
       });
 
       // Strategy 2: Extract from paragraphs/list items with prices
-      // Pattern: Item Name $price or Item Name ... $price
       const bodyText = document.body.innerText;
       const lines = bodyText.split('\n');
       
@@ -229,26 +317,19 @@ class IntelligentScraper {
         const trimmed = line.trim();
         if (!trimmed || trimmed.length < 3 || trimmed.length > 150) return;
         
-        // Skip lines that look like descriptions (start with lowercase, prepositions, conjunctions)
         if (/^(with|and|or|for|from|served|served with|choice of|add|allow|includes|includes |topped)/i.test(trimmed)) return;
         
-        // Match: "Item Name $12.34" or "Item Name ... $12.34"
+        // Match: "Item Name $12.34"
         const match = trimmed.match(/^([A-Za-z][A-Za-z0-9\s&'™®.,()-]+?)\s*[.:\-…]*\s*\$(\d+\.\d{2})\s*$/);
         if (match) {
           let name = match[1].trim();
           const price = parseFloat(match[2]);
           
-          // Clean up name - remove trailing punctuation
           name = name.replace(/[.:\-…]+$/, '').trim();
-          
-          // Also clean up common patterns like "Topped with X"
           name = name.replace(/\s+Topped with.+$/i, '');
           
-          // Skip if name is too short, too long, or looks like description
           if (!name || name.length < 3 || name.length > 80) return;
           if (isNoise(name)) return;
-          
-          // Skip if name is mostly numbers or special chars
           if (!/^[A-Za-z]/.test(name)) return;
           
           const key = name.toLowerCase();
@@ -258,12 +339,12 @@ class IntelligentScraper {
               name: cleanText(name),
               price,
               description: '',
-              category: 'Menu'
+              category: currentCategory
             });
           }
         }
         
-        // Also match: "Name $12.34" on same line (no dots before price)
+        // Also match: "Name $12.34"
         const inlineMatch = trimmed.match(/^([A-Za-z][A-Za-z0-9\s&'™®.,()-]+?)\s+\$(\d+\.\d{2})\s*$/);
         if (inlineMatch) {
           let name = inlineMatch[1].trim();
@@ -278,7 +359,7 @@ class IntelligentScraper {
                 name: cleanText(name),
                 price,
                 description: '',
-                category: 'Menu'
+                category: currentCategory
               });
             }
           }
@@ -290,70 +371,109 @@ class IntelligentScraper {
   }
 
   async filterWithGroq(items) {
-    // Use heuristic filter as primary (works well)
-    const heuristicFiltered = this.heuristicFilter(items);
+    // Use heuristic filter as primary
+    let filtered = this.heuristicFilter(items);
     
-    // Use Groq only for additional quality check on already filtered items
-    if (!groq || heuristicFiltered.length === 0) return heuristicFiltered;
-
-    const itemNames = heuristicFiltered.map((i, idx) => `${idx + 1}. ${i.name}`).join('\n');
+    if (!groq || filtered.length === 0) return filtered;
 
     try {
       const completion = await Promise.race([
         groq.chat.completions.create({
           messages: [{
+            role: 'system',
+            content: `You are a restaurant menu expert. Your job is to:
+1. REMOVE only OBVIOUS non-food items (navigation, headers, locations, promotions)
+2. KEEP all food dishes - even if you're unsure, keep it
+3. CATEGORIZE items into these categories: "Starters", "Main Course", "Biryani & Rice", "Breads & Sides", "Desserts", "Beverages", "Combos", "Specials"
+4. ADD brief descriptions for items missing them
+
+BE LENIENT - When in doubt, KEEP the item. Only remove clearly non-food items.`
+          }, {
             role: 'user',
-            content: `Review this restaurant menu. Remove only obvious NON-food items.
+            content: `Analyze this restaurant menu. Remove ONLY these types of non-food items:
+- Navigation: "Menu", "Home", "About", "Contact", "Locations", "Order Now", "Cart"
+- Headers: "Our Menu", "Browse", "Filter", "Sort"
+- Promotions: "Limited Time", "Special Offer", "Buy One Get One"
+- Locations: City names, addresses
+- Footer links: "Privacy", "Terms", "Careers"
 
-Menu items:
-${itemNames}
+Menu items to analyze:
+${filtered.map((item, idx) => `${idx}: "${item.name}" | Category: ${item.category} | Price: ${item.price || 'N/A'}`).join('\n')}
 
-Remove ONLY these types:
-- Navigation/headers: "Menu", "Home", "Locations", "Order", "Contact", "About"
-- Category names: "Small Plates", "Grills", "Breads", "Drinks", "Desserts"
-- Location names: "Our Cafés", "Battersea", "King's Cross"
-- Genericpromos: "Most Loved", "Discover", "Visit Us", "Follow Us"
+Return ONLY valid JSON with a "refined" array. Each item should have name, category, description, and price:
+{"refined": [{"name":"Chicken Tikka","category":"Starters","description":"Tandoor-grilled marinated chicken","price":0},{"name":"Naan Bread","category":"Breads & Sides","description":"Fresh baked flatbread","price":0}]}
 
-Keep ALL actual food dishes like "Chicken Tikka", "Biryani", "Naan", "Curry", etc.
-
-Return JSON array of NUMBERS to REMOVE (empty array [] to keep all):`
+If you cannot determine the food items, return ALL items in the "refined" array.`
           }],
           model: 'llama-3.3-70b-versatile',
           temperature: 0.1,
-          max_tokens: 200
+          max_tokens: 3000
         }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000))
       ]);
 
-      const responseText = completion.choices[0]?.message?.content?.trim() || '[]';
+      const responseText = completion.choices[0]?.message?.content?.trim() || '';
       
-      // Parse JSON array
-      const numbers = responseText.match(/\d+/g);
-      if (numbers && numbers.length > 0) {
-        const toRemove = new Set(numbers.map(n => parseInt(n) - 1));
-        return heuristicFiltered.filter((_, idx) => !toRemove.has(idx));
+      try {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const result = JSON.parse(jsonMatch[0]);
+          
+          if (result.refined && Array.isArray(result.refined) && result.refined.length > 0) {
+            console.log(`Groq refined ${result.refined.length} items`);
+            return result.refined.map(item => ({
+              name: item.name,
+              category: item.category || 'Menu',
+              description: item.description || '',
+              price: item.price || item.Price || 0
+            }));
+          }
+        }
+      } catch (parseError) {
+        console.log('Groq JSON parse error:', parseError.message);
       }
       
-      return heuristicFiltered;
+      // If Groq fails, return heuristic filtered items
+      console.log('Groq failed, using heuristic filter results');
+      return filtered;
     } catch (error) {
-      console.log('Groq filter error:', error.message);
-      return heuristicFiltered;
+      console.log('Groq error:', error.message);
+      return filtered;
     }
   }
 
   heuristicFilter(items) {
+    // Blocked page detection patterns
+    const blockedPatterns = [
+      /blocked|block/i,
+      /access denied/i,
+      /challenge/i,
+      /cloudflare/i,
+      /captcha|recaptcha/i,
+      /security check/i,
+      /unusual traffic/i,
+      /permission denied/i,
+      /forbidden/i,
+      /please wait/i,
+      /verifying/i,
+      /ray id/i,
+      /error 403/i,
+      /datadome/i
+    ];
+
     const nonFoodPatterns = [
       /^menu$/i, /^home$/i, /^contact$/i, /^about$/i, /^order$/i,
       /^catering$/i, /^rewards$/i, /^merch$/i, /^faq$/i, /^shipping$/i,
       /^reservations$/i, /^locations?$/i, /^our cafés$/i, /^permit rooms$/i,
       /^select a menu$/i, /^all day$/i, /^breakfast$/i, /^lunch$/i, /^dinner$/i,
-      /^discover/i, /^visit us$/i, /^shop/i, /^follow us/i, /^most loved$/i,
+      /^discover/i, /^visit us$/i, /^shop/i, /^follow us$/i, /^most loved$/i,
       /^cake$/i, /^desserts$/i, /^drinks$/i, /^bread$/i, /^salads?$/i,
       /^grills$/i, /^small plates$/i, /^biryani and rice$/i, /^veg\.? side/i,
       /^cafe support$/i, /^store support$/i, /^group bookings$/i,
       /^delivery$/i, /^collection$/i, /^group feast$/i, /^children$/i, /^vegan$/i,
       /select a menu/i, /our menus/i, /café support/i, /store support/i,
-      /^battersea|^carnaby|^covent|^kensington|^king|^shoreditch/i
+      /^battersea|^carnaby|^covent|^kensington|^king|^shoreditch/i,
+      /^sorry.*blocked/i, /^you.*unable.*access/i, /^why.*blocked/i, /^what.*do.*resolve/i
     ];
 
     const foodIndicators = [
@@ -368,6 +488,10 @@ Return JSON array of NUMBERS to REMOVE (empty array [] to keep all):`
 
     return items.filter(item => {
       const name = item.name.toLowerCase().trim();
+      const desc = (item.description || '').toLowerCase();
+      
+      // Remove blocked page content
+      if (blockedPatterns.some(p => p.test(name) || p.test(desc))) return false;
       
       // Remove obvious non-food
       if (nonFoodPatterns.some(p => p.test(name))) return false;

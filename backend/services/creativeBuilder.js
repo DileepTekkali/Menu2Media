@@ -56,6 +56,36 @@ class CreativeBuilderService {
       .join('') || 'R';
   }
 
+  getFoodEmoji(dishName) {
+    const text = (dishName || '').toLowerCase();
+    
+    if (/pizza/i.test(text)) return '🍕';
+    if (/burger/i.test(text)) return '🍔';
+    if (/pasta|noodle|spaghetti|alfredo/i.test(text)) return '🍝';
+    if (/chicken|tandoor|tikka|seekh|kebab|malai|murgh/i.test(text)) return '🍗';
+    if (/biryani|rice| pulao/i.test(text)) return '🍚';
+    if (/curry|butter chicken|murgh/i.test(text)) return '🍛';
+    if (/salad|greens/i.test(text)) return '🥗';
+    if (/sandwich|sub|wrap|roll/i.test(text)) return '🥪';
+    if (/soup/i.test(text)) return '🍲';
+    if (/coffee|espresso/i.test(text)) return '☕';
+    if (/tea|chai|maska/i.test(text)) return '🍵';
+    if (/dessert|sweet|mithai/i.test(text)) return '🍰';
+    if (/cake/i.test(text)) return '🎂';
+    if (/bread|naan|roti|paratha/i.test(text)) return '🥖';
+    if (/fish|salmon/i.test(text)) return '🐟';
+    if (/steak|beef|meat/i.test(text)) return '🥩';
+    if (/shrimp|prawn/i.test(text)) return '🦐';
+    if (/samosa|vada|pau|bhel/i.test(text)) return '🥟';
+    if (/dal|daal|black daal/i.test(text)) return '🫘';
+    if (/paneer|i poster/i.test(text)) return '🧈';
+    if (/ice cream|kulfi/i.test(text)) return '🍨';
+    if (/juice|smoothie/i.test(text)) return '🥤';
+    if (/drink|beverage/i.test(text)) return '🍹';
+    
+    return '🍽️';
+  }
+
   getThemeStyle(theme = 'casual', colors = []) {
     const palettes = {
       luxury: ['#111111', '#C8A24A'],
@@ -96,88 +126,125 @@ class CreativeBuilderService {
   }
 
   // Full overlay SVG with text, badges, CTA — laid over the composited image
-  buildOverlaySvg(width, height, dish, caption, format, style) {
+  buildOverlaySvg(width, height, dish, caption, format, style, campaignType = 'daily') {
     const isStory = format === 'instagram_story';
     const isFacebook = format === 'facebook_post';
 
     const name = this.escapeXml(dish.name || 'Special Dish');
-    const price = dish.price ? `\u20B9${Math.round(dish.price)}` : '';
-    const headline = this.escapeXml(caption?.headline?.replace(/^[^\w]*/, '') || dish.name || '');
-    const cta = this.escapeXml(caption?.cta || 'Order Now!');
+    const price = dish.price ? `₹${Math.round(dish.price)} Only` : '';
+    const headline = this.escapeXml(caption?.headline?.replace(/^[^\w]*/, '') || 'Today\'s Special');
+    const cta = this.escapeXml(caption?.cta || 'Order Now');
     const rawRestaurantName = dish.restaurant_name || 'Our Restaurant';
     const restaurantName = this.escapeXml(rawRestaurantName);
     const logoInitials = this.escapeXml(this.getInitials(rawRestaurantName));
     const isBestseller = dish.is_bestseller || false;
-    const accent = style?.accent || '#FF6B35';
+    const description = this.escapeXml(caption?.caption || dish.description || 'Delicious & Fresh');
+    
+    const contextThemes = {
+      daily: { accent: '#E85D04', badge: 'Daily Special', gradient: ['#FF6B35', '#FF8C42'] },
+      new_arrival: { accent: '#9D4EDD', badge: 'New Arrival', gradient: ['#8B5CF6', '#A78BFA'] },
+      combo: { accent: '#FFB703', badge: 'Combo Deal', gradient: ['#F59E0B', '#FBBF24'] },
+      festive: { accent: '#DC2626', badge: 'Festive Special', gradient: ['#DC2626', '#EF4444'] },
+      weekend: { accent: '#059669', badge: 'Weekend Special', gradient: ['#059669', '#10B981'] }
+    };
+    
+    const theme = contextThemes[campaignType] || contextThemes.daily;
+    const accent = theme.accent;
     const accentRgb = this.hexToRgb(accent);
     const fontFamily = style?.fontFamily || 'Arial, sans-serif';
     const headlineFamily = style?.headlineFamily || "'Arial Black', Arial, sans-serif";
+    const foodEmoji = this.getFoodEmoji(dish.name || '');
 
-    // --- Instagram Square (1080x1080) ---
+    // --- Instagram Square (1080x1080) - New Structure ---
     if (!isStory && !isFacebook) {
-      const nameLines = this.wrapText(name, 22);
-      const nameY = 780;
-      const lineH = 70;
-      const nameSvg = nameLines.map((line, i) =>
-        `<text x="540" y="${nameY + i * lineH}" font-family="${headlineFamily}" font-size="62" font-weight="900" fill="white" text-anchor="middle" filter="url(#shadow)">${this.escapeXml(line)}</text>`
-      ).join('\n');
+      // Image occupies top 60% of canvas (will be composited below)
+      const imageAreaHeight = 650;
+      const overlayStartY = imageAreaHeight - 20;
+      
+      // Price badge positioning (overlapping image bottom)
+      const badgeWidth = price ? 200 : 0;
+      const badgeX = (1080 - badgeWidth) / 2;
+      const badgeY = imageAreaHeight - 60;
+      
+      // Description area starts below image
+      const descY = imageAreaHeight + 80;
+      
+      // CTA section at bottom
+      const ctaY = 980;
+      const logoX = 880;
 
       return Buffer.from(`
 <svg width="1080" height="1080" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="2" dy="2" stdDeviation="4" flood-color="rgba(0,0,0,0.8)"/>
+      <feDropShadow dx="2" dy="2" stdDeviation="5" flood-color="rgba(0,0,0,0.5)"/>
     </filter>
-    <linearGradient id="overlay" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="transparent"/>
-      <stop offset="50%" stop-color="rgba(0,0,0,0.6)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.92)"/>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:${theme.gradient[0]};stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:${theme.gradient[1]};stop-opacity:1"/>
+    </linearGradient>
+    <linearGradient id="fadeGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${theme.gradient[0]};stop-opacity:0"/>
+      <stop offset="100%" stop-color="${theme.gradient[0]};stop-opacity:1"/>
     </linearGradient>
   </defs>
 
-  <!-- Bottom overlay -->
-  <rect x="0" y="580" width="1080" height="500" fill="url(#overlay)"/>
+  <!-- Gradient Background -->
+  <rect width="1080" height="1080" fill="url(#bgGrad)"/>
+  
+  <!-- Decorative elements -->
+  <circle cx="-100" cy="200" r="250" fill="rgba(255,255,255,0.08)"/>
+  <circle cx="1180" cy="600" r="300" fill="rgba(255,255,255,0.06)"/>
+  <circle cx="100" cy="1000" r="150" fill="rgba(255,255,255,0.05)"/>
 
-  <!-- Top bar: restaurant name -->
-  <rect x="0" y="0" width="1080" height="80" fill="rgba(0,0,0,0.45)"/>
-  <rect x="32" y="14" width="52" height="52" rx="8" fill="${accent}"/>
-  <text x="58" y="48" font-family="${headlineFamily}" font-size="22" fill="white" font-weight="900" text-anchor="middle">${logoInitials}</text>
-  <text x="104" y="52" font-family="${fontFamily}" font-size="28" fill="rgba(255,255,255,0.9)" font-weight="bold">${restaurantName}</text>
+  <!-- TOP: Tagline -->
+  <text x="540" y="60" font-family="${fontFamily}" font-size="28" font-weight="bold" fill="rgba(255,255,255,0.95)" text-anchor="middle" letter-spacing="3">🔥 ${headline.toUpperCase()}</text>
+  
+  <!-- Decorative line under tagline -->
+  <rect x="340" y="75" width="400" height="3" rx="1.5" fill="rgba(255,255,255,0.5)"/>
 
-  ${isBestseller ? `
-  <!-- BESTSELLER badge -->
-  <rect x="830" y="12" width="230" height="56" rx="28" fill="${accent}"/>
-  <text x="945" y="47" font-family="${fontFamily}" font-size="24" font-weight="bold" fill="white" text-anchor="middle">★ BESTSELLER</text>
-  ` : ''}
+  <!-- Food emoji + Dish name (above image) -->
+  <text x="540" y="${imageAreaHeight - 100}" font-family="Arial" font-size="80" text-anchor="middle">${foodEmoji}</text>
+  <text x="540" y="${imageAreaHeight - 30}" font-family="${headlineFamily}" font-size="52" font-weight="900" fill="white" text-anchor="middle" filter="url(#shadow)">${name.toUpperCase()}</text>
 
+  <!-- Price Badge (overlapping image bottom) -->
   ${price ? `
-  <!-- Price badge -->
-  <rect x="30" y="680" width="180" height="64" rx="32" fill="${accent}"/>
-  <text x="120" y="722" font-family="${headlineFamily}" font-size="34" font-weight="900" fill="white" text-anchor="middle">${this.escapeXml(price)}</text>
+  <rect x="${badgeX}" y="${badgeY}" width="${badgeWidth}" height="55" rx="27" fill="white" filter="url(#shadow)"/>
+  <text x="540" y="${badgeY + 38}" font-family="${headlineFamily}" font-size="32" font-weight="900" fill="${accent}" text-anchor="middle">${price}</text>
   ` : ''}
 
-  <!-- Dish name lines -->
-  ${nameSvg}
+  <!-- Fade gradient to overlay area -->
+  <rect x="0" y="${overlayStartY}" width="1080" height="100" fill="url(#fadeGrad)"/>
+  
+  <!-- Description text -->
+  <text x="540" y="${descY}" font-family="${fontFamily}" font-size="28" fill="rgba(255,255,255,0.9)" text-anchor="middle">${this.truncateText(description, 50)}</text>
+  
+  <!-- Decorative dots -->
+  <circle cx="440" cy="${descY + 20}" r="4" fill="rgba(255,255,255,0.4)"/>
+  <circle cx="540" cy="${descY + 20}" r="4" fill="rgba(255,255,255,0.4)"/>
+  <circle cx="640" cy="${descY + 20}" r="4" fill="rgba(255,255,255,0.4)"/>
 
-  <!-- CTA bar -->
-  <rect x="0" y="1000" width="1080" height="80" fill="rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},0.92)"/>
-  <text x="540" y="1050" font-family="${fontFamily}" font-size="32" font-weight="bold" fill="white" text-anchor="middle">${cta}</text>
+  <!-- Bottom section: CTA + Logo -->
+  <rect x="0" y="${ctaY}" width="1080" height="100" fill="rgba(0,0,0,0.4)"/>
+  <rect x="0" y="${ctaY}" width="1080" height="6" fill="${accent}"/>
+  
+  <!-- CTA Button -->
+  <rect x="60" y="${ctaY + 18}" width="240" height="64" rx="32" fill="${accent}"/>
+  <text x="180" y="${ctaY + 58}" font-family="${headlineFamily}" font-size="26" font-weight="900" fill="white" text-anchor="middle">${cta}</text>
+  
+  <!-- Logo / Branding -->
+  <rect x="${logoX}" y="${ctaY + 15}" width="70" height="70" rx="12" fill="rgba(255,255,255,0.2)"/>
+  <text x="${logoX + 35}" y="${ctaY + 58}" font-family="${headlineFamily}" font-size="24" fill="white" font-weight="900" text-anchor="middle">${logoInitials}</text>
+  <text x="${logoX - 10}" y="${ctaY + 55}" font-family="${fontFamily}" font-size="16" fill="rgba(255,255,255,0.8)" text-anchor="end">${restaurantName}</text>
 </svg>`);
     }
 
     // --- Instagram Story (1080x1920) ---
     if (isStory) {
-      const nameLines = this.wrapText(name, 20);
-      const nameBaseY = 1300;
-      const lineH = 80;
-      const nameSvg = nameLines.map((line, i) =>
-        `<text x="540" y="${nameBaseY + i * lineH}" font-family="${headlineFamily}" font-size="70" font-weight="900" fill="white" text-anchor="middle" filter="url(#shadow)">${this.escapeXml(line)}</text>`
-      ).join('\n');
-      const headlineLines = this.wrapText(headline, 24);
-      const headlineSvg = headlineLines.map((line, i) =>
-        `<text x="540" y="${1170 + i * 56}" font-family="${fontFamily}" font-size="44" fill="rgba(255,255,255,0.85)" text-anchor="middle">${this.escapeXml(line)}</text>`
-      ).join('\n');
-
+      const imageAreaHeight = 1100;
+      const descY = imageAreaHeight + 100;
+      const ctaY = 1750;
+      
       return Buffer.from(`
 <svg width="1080" height="1920" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -186,46 +253,46 @@ class CreativeBuilderService {
     </filter>
     <linearGradient id="overlay" x1="0" y1="0.5" x2="0" y2="1">
       <stop offset="0%" stop-color="transparent"/>
-      <stop offset="40%" stop-color="rgba(0,0,0,0.55)"/>
+      <stop offset="40%" stop-color="rgba(0,0,0,0.6)"/>
       <stop offset="100%" stop-color="rgba(0,0,0,0.95)"/>
     </linearGradient>
   </defs>
 
-  <rect x="0" y="900" width="1080" height="1020" fill="url(#overlay)"/>
+  <!-- Top tagline -->
+  <rect x="0" y="0" width="1080" height="120" fill="rgba(0,0,0,0.5)"/>
+  <text x="540" y="80" font-family="${fontFamily}" font-size="36" font-weight="bold" fill="white" text-anchor="middle">🔥 ${headline.toUpperCase()}</text>
 
-  <!-- Top bar -->
-  <rect x="0" y="0" width="1080" height="100" fill="rgba(0,0,0,0.5)"/>
-  <rect x="54" y="20" width="62" height="62" rx="8" fill="${accent}"/>
-  <text x="85" y="61" font-family="${headlineFamily}" font-size="25" fill="white" font-weight="900" text-anchor="middle">${logoInitials}</text>
-  <text x="138" y="65" font-family="${fontFamily}" font-size="36" fill="white" font-weight="bold">${restaurantName}</text>
+  <!-- Image overlay fade -->
+  <rect x="0" y="${imageAreaHeight - 150}" width="1080" height="150" fill="url(#overlay)"/>
 
-  ${isBestseller ? `
-  <rect x="730" y="18" width="310" height="68" rx="34" fill="${accent}"/>
-  <text x="885" y="62" font-family="${fontFamily}" font-size="30" font-weight="bold" fill="white" text-anchor="middle">★ BESTSELLER</text>
-  ` : ''}
+  <!-- Food emoji + name above image -->
+  <text x="540" y="${imageAreaHeight - 200}" font-family="Arial" font-size="120" text-anchor="middle">${foodEmoji}</text>
+  <text x="540" y="${imageAreaHeight - 90}" font-family="${headlineFamily}" font-size="72" font-weight="900" fill="white" text-anchor="middle" filter="url(#shadow)">${name}</text>
 
-  ${headlineSvg}
-  ${nameSvg}
-
+  <!-- Price badge -->
   ${price ? `
-  <rect x="54" y="1490" width="220" height="80" rx="40" fill="${accent}"/>
-  <text x="164" y="1542" font-family="${headlineFamily}" font-size="40" font-weight="900" fill="white" text-anchor="middle">${this.escapeXml(price)}</text>
+  <rect x="340" y="${imageAreaHeight - 40}" width="400" height="70" rx="35" fill="white" filter="url(#shadow)"/>
+  <text x="540" y="${imageAreaHeight + 12}" font-family="${headlineFamily}" font-size="44" font-weight="900" fill="${accent}" text-anchor="middle">${price}</text>
   ` : ''}
 
-  <!-- CTA -->
-  <rect x="0" y="1820" width="1080" height="100" fill="rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},0.95)"/>
-  <text x="540" y="1880" font-family="${fontFamily}" font-size="42" font-weight="bold" fill="white" text-anchor="middle">${cta}</text>
+  <!-- Description -->
+  <text x="540" y="${descY}" font-family="${fontFamily}" font-size="36" fill="rgba(255,255,255,0.9)" text-anchor="middle">${this.truncateText(description, 60)}</text>
+
+  <!-- Bottom CTA -->
+  <rect x="60" y="${ctaY}" width="960" height="90" rx="45" fill="${accent}"/>
+  <text x="540" y="${ctaY + 60}" font-family="${headlineFamily}" font-size="40" font-weight="900" fill="white" text-anchor="middle">${cta}</text>
+
+  <!-- Logo -->
+  <rect x="890" y="30" width="80" height="80" rx="16" fill="${accent}"/>
+  <text x="930" y="82" font-family="${headlineFamily}" font-size="28" fill="white" font-weight="900" text-anchor="middle">${logoInitials}</text>
 </svg>`);
     }
 
     // --- Facebook Post (1200x630) ---
-    const nameLines = this.wrapText(name, 18);
-    const nameBaseY = 340;
-    const lineH = 64;
-    const nameSvg = nameLines.map((line, i) =>
-      `<text x="640" y="${nameBaseY + i * lineH}" font-family="${headlineFamily}" font-size="56" font-weight="900" fill="white" text-anchor="middle" filter="url(#shadow)">${this.escapeXml(line)}</text>`
-    ).join('\n');
-
+    const imageAreaHeight = 400;
+    const descY = imageAreaHeight + 80;
+    const ctaY = 520;
+    
     return Buffer.from(`
 <svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -234,68 +301,97 @@ class CreativeBuilderService {
     </filter>
     <linearGradient id="overlay" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="transparent"/>
-      <stop offset="45%" stop-color="rgba(0,0,0,0.5)"/>
+      <stop offset="60%" stop-color="rgba(0,0,0,0.7)"/>
       <stop offset="100%" stop-color="rgba(0,0,0,0.9)"/>
     </linearGradient>
   </defs>
 
-  <rect x="0" y="200" width="1200" height="430" fill="url(#overlay)"/>
+  <!-- Top tagline -->
+  <text x="600" y="55" font-family="${fontFamily}" font-size="32" font-weight="bold" fill="white" text-anchor="middle">🔥 ${headline.toUpperCase()}</text>
 
-  <!-- Top bar -->
-  <rect x="0" y="0" width="1200" height="70" fill="rgba(0,0,0,0.5)"/>
-  <rect x="30" y="10" width="50" height="50" rx="8" fill="${accent}"/>
-  <text x="55" y="43" font-family="${headlineFamily}" font-size="20" fill="white" font-weight="900" text-anchor="middle">${logoInitials}</text>
-  <text x="98" y="47" font-family="${fontFamily}" font-size="28" fill="white" font-weight="bold">${restaurantName}</text>
+  <!-- Image overlay fade -->
+  <rect x="0" y="${imageAreaHeight - 120}" width="1200" height="120" fill="url(#overlay)"/>
 
-  ${isBestseller ? `
-  <rect x="910" y="10" width="260" height="50" rx="25" fill="${accent}"/>
-  <text x="1040" y="43" font-family="${fontFamily}" font-size="22" font-weight="bold" fill="white" text-anchor="middle">★ BESTSELLER</text>
-  ` : ''}
+  <!-- Food emoji + name -->
+  <text x="600" y="${imageAreaHeight - 160}" font-family="Arial" font-size="90" text-anchor="middle">${foodEmoji}</text>
+  <text x="600" y="${imageAreaHeight - 60}" font-family="${headlineFamily}" font-size="64" font-weight="900" fill="white" text-anchor="middle" filter="url(#shadow)">${name}</text>
 
-  ${nameSvg}
-
+  <!-- Price badge -->
   ${price ? `
-  <rect x="30" y="${nameBaseY + nameLines.length * lineH + 10}" width="180" height="58" rx="29" fill="${accent}"/>
-  <text x="120" y="${nameBaseY + nameLines.length * lineH + 50}" font-family="${headlineFamily}" font-size="30" font-weight="900" fill="white" text-anchor="middle">${this.escapeXml(price)}</text>
+  <rect x="480" y="${imageAreaHeight - 35}" width="240" height="60" rx="30" fill="white" filter="url(#shadow)"/>
+  <text x="600" y="${imageAreaHeight + 10}" font-family="${headlineFamily}" font-size="36" font-weight="900" fill="${accent}" text-anchor="middle">${price}</text>
   ` : ''}
 
-  <!-- CTA bottom -->
-  <rect x="0" y="570" width="1200" height="60" fill="rgba(${accentRgb.r},${accentRgb.g},${accentRgb.b},0.92)"/>
-  <text x="600" y="610" font-family="${fontFamily}" font-size="26" font-weight="bold" fill="white" text-anchor="middle">${cta}</text>
+  <!-- Description -->
+  <text x="600" y="${descY}" font-family="${fontFamily}" font-size="28" fill="rgba(255,255,255,0.9)" text-anchor="middle">${this.truncateText(description, 50)}</text>
+
+  <!-- Bottom CTA -->
+  <rect x="0" y="${ctaY}" width="1200" height="110" fill="rgba(0,0,0,0.4)"/>
+  <rect x="0" y="${ctaY}" width="1200" height="6" fill="${accent}"/>
+  <rect x="50" y="${ctaY + 18}" width="300" height="74" rx="37" fill="${accent}"/>
+  <text x="200" y="${ctaY + 65}" font-family="${headlineFamily}" font-size="32" font-weight="900" fill="white" text-anchor="middle">${cta}</text>
+
+  <!-- Logo -->
+  <rect x="950" y="${ctaY + 15}" width="90" height="80" rx="16" fill="${accent}"/>
+  <text x="995" y="${ctaY + 68}" font-family="${headlineFamily}" font-size="32" fill="white" font-weight="900" text-anchor="middle">${logoInitials}</text>
+  <text x="940" y="${ctaY + 65}" font-family="${fontFamily}" font-size="18" fill="rgba(255,255,255,0.8)" text-anchor="end">${restaurantName}</text>
 </svg>`);
+  }
+  
+  truncateText(text, maxLen) {
+    if (!text || text.length <= maxLen) return text;
+    return text.substring(0, maxLen - 3) + '...';
   }
 
   async buildCreative(options) {
-    const { dish, format, imageBuffer, colors, caption } = options;
+    const { dish, format, imageBuffer, colors, caption, campaignType } = options;
     const { width, height } = this.getDimensions(format);
     const style = this.getThemeStyle(dish.restaurant_theme, colors || ['#FF6B35', '#2E4057']);
 
     try {
-      // 1. Gradient background
+      // 1. Start with gradient background
       const gradSvg = this.buildGradientSvg(width, height, style.colors);
       let base = await sharp(gradSvg).resize(width, height).png().toBuffer();
-
-      // 2. Composite food image (upper portion)
+      
       const composites = [];
-      if (imageBuffer && imageBuffer.length > 1000) {
-        const imgH = format === 'facebook_post'
-          ? Math.floor(height * 0.75)
-          : Math.floor(height * 0.62);
-        const imgW = format === 'facebook_post'
-          ? Math.floor(width * 0.55)
-          : width;
 
+      // 2. Add food image as MAIN visual (centered)
+      if (imageBuffer && imageBuffer.length > 1000) {
+        const isStory = format === 'instagram_story';
+        const isFacebook = format === 'facebook_post';
+        
+        // Image dimensions based on format
+        let imgW, imgH, imgTop, imgLeft;
+        
+        if (isStory) {
+          imgW = 900;
+          imgH = 1000;
+          imgTop = 120;
+          imgLeft = 90;
+        } else if (isFacebook) {
+          imgW = 600;
+          imgH = 400;
+          imgTop = 120;
+          imgLeft = 300;
+        } else {
+          // Instagram Square - image in upper 55%
+          imgW = 980;
+          imgH = 600;
+          imgTop = 100;
+          imgLeft = 50;
+        }
+
+        // Resize image (sharp corners - overlay handles visual styling)
         const resized = await sharp(imageBuffer)
           .resize(imgW, imgH, { fit: 'cover', position: 'centre' })
           .png()
           .toBuffer();
 
-        const left = format === 'facebook_post' ? Math.floor((width - imgW) / 2) : 0;
-        composites.push({ input: resized, top: 0, left });
+        composites.push({ input: resized, top: imgTop, left: imgLeft });
       }
 
-      // 3. Overlay SVG (text, badges, CTA)
-      const overlaySvg = this.buildOverlaySvg(width, height, dish, caption, format, style);
+      // 3. Overlay SVG (text, badges, CTA) on top
+      const overlaySvg = this.buildOverlaySvg(width, height, dish, caption, format, style, campaignType);
       composites.push({ input: overlaySvg, top: 0, left: 0 });
 
       const finalBuffer = await sharp(base)
@@ -309,7 +405,7 @@ class CreativeBuilderService {
       // Return gradient-only fallback
       try {
         const gradSvg = this.buildGradientSvg(width, height, style.colors);
-        const overlaySvg = this.buildOverlaySvg(width, height, dish, caption, format, style);
+        const overlaySvg = this.buildOverlaySvg(width, height, dish, caption, format, style, campaignType);
         const fallback = await sharp(gradSvg)
           .composite([{ input: overlaySvg, top: 0, left: 0 }])
           .png()

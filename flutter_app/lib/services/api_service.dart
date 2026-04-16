@@ -22,7 +22,7 @@ class ApiService {
             headers: _headers,
             body: jsonEncode(body),
           )
-          .timeout(const Duration(minutes: 3));
+          .timeout(const Duration(minutes: 30)); // Increased to 30 minutes
       print('API Response status: ${response.statusCode}');
       return jsonDecode(response.body);
     } catch (e) {
@@ -38,7 +38,7 @@ class ApiService {
             Uri.parse('$baseUrl$path'),
             headers: _headers,
           )
-          .timeout(const Duration(seconds: 60));
+          .timeout(const Duration(minutes: 10)); // Increased to 10 minutes
       return jsonDecode(response.body);
     } catch (e) {
       return {'success': false, 'error': e.toString()};
@@ -162,7 +162,7 @@ class ApiService {
             headers: _headers,
             body: jsonEncode(body),
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(minutes: 5));
       final data = jsonDecode(response.body);
       return data['success'] == true;
     } catch (e) {

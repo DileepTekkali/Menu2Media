@@ -118,7 +118,7 @@ router.post('/generate-captions', async (req, res) => {
 // POST /api/generate-images
 router.post('/generate-images', async (req, res) => {
   try {
-    const { dishes } = req.body;
+    const { dishes, campaign_type = 'daily', festival_type } = req.body;
 
     if (!dishes || !Array.isArray(dishes) || dishes.length === 0) {
       return res.status(400).json({ success: false, error: 'Dishes array is required' });
@@ -131,7 +131,6 @@ router.post('/generate-images', async (req, res) => {
         let imageBuffer = null;
         let method = 'ai_generated';
 
-        // Use existing image if available
         if (dish.image_url) {
           const enhanced = await imageGenerator.enhanceImage(dish.image_url);
           if (enhanced.success) {
@@ -140,9 +139,8 @@ router.post('/generate-images', async (req, res) => {
           }
         }
 
-        // Generate if no existing image
         if (!imageBuffer) {
-          const generated = await imageGenerator.generateImage(dish.name, dish.description);
+          const generated = await imageGenerator.generateImage(dish.name, dish.description, 3, campaign_type, festival_type);
           imageBuffer = generated.buffer;
           method = generated.method;
         }
@@ -260,7 +258,7 @@ router.post('/create-creatives', async (req, res) => {
             imageBuffer = await imageGenerator.downloadAndProcess(dish.image_url);
           }
           if (!imageBuffer) {
-            const generated = await imageGenerator.generateImage(dish.name, dish.description);
+            const generated = await imageGenerator.generateImage(dish.name, dish.description, 3, campaignType, req.body.festival_type);
             imageBuffer = generated.buffer;
           }
 
@@ -275,7 +273,8 @@ router.post('/create-creatives', async (req, res) => {
             format,
             imageBuffer,
             colors: brandColors,
-            caption
+            caption,
+            campaignType: campaignType
           });
 
           if (!creative.success) {

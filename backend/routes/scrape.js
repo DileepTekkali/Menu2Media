@@ -51,15 +51,59 @@ router.post('/scrape', async (req, res) => {
       restaurant = newRestaurant;
     }
 
-    // Attempt intelligent scraper only (uses Playwright with heuristics)
-    let scrapeResult;
+    // Try multiple scrapers with fallbacks
+    let scrapeResult = null;
+    
+    // 1. Try intelligent scraper (heuristics + Groq)
     try {
       scrapeResult = await intelligentScraper.scrapeMenu(restaurant_url);
-      console.log(`Intelligent scraper result: ${scrapeResult.items?.length || 0} items`);
+      console.log(`Intelligent scraper: ${scrapeResult.items?.length || 0} items`);
     } catch (e) {
       console.log(`Intelligent scraper failed: ${e.message}`);
-      // Fallback to static scraper only if intelligent fails
-      scrapeResult = await scraperService.scrapeMenu(restaurant_url);
+    }
+    
+    // 2. If no items, try playwright dynamic scraper
+    if (!scrapeResult?.items?.length && playwrightScraper) {
+      try {
+        console.log(`Trying dynamic scraper for ${restaurant_url}...`);
+        scrapeResult = await playwrightScraper.scrapeMenuDynamic(restaurant_url, 2);
+        console.log(`Dynamic scraper: ${scrapeResult.items?.length || 0} items`);
+      } catch (e) {
+        console.log(`Dynamic scraper failed: ${e.message}`);
+      }
+    }
+    
+    // 3. If still no items, try static scraper
+    if (!scrapeResult?.items?.length) {
+      try {
+        console.log(`Trying static scraper for ${restaurant_url}...`);
+        scrapeResult = await scraperService.scrapeMenu(restaurant_url);
+        console.log(`Static scraper: ${scrapeResult.items?.length || 0} items`);
+      } catch (e) {
+        console.log(`Static scraper failed: ${e.message}`);
+      }
+    }
+    
+    // 4. If still no items, try with longer timeout and stealth mode
+    if (!scrapeResult?.items?.length && playwrightScraper) {
+      try {
+        console.log(`Trying stealth scraper with stealth mode...`);
+        scrapeResult = await playwrightScraper.scrapeMenuStealth(restaurant_url);
+        console.log(`Stealth scraper: ${scrapeResult.items?.length || 0} items`);
+      } catch (e) {
+        console.log(`Stealth scraper failed: ${e.message}`);
+      }
+    }
+    
+    // If all scrapers failed, create empty result
+    if (!scrapeResult?.items?.length) {
+      scrapeResult = { items: [], method: 'failed' };
+    }
+    
+    // Apply heuristic filter to remove blocked page content from all scrapers
+    if (scrapeResult?.items?.length) {
+      scrapeResult.items = intelligentScraper.heuristicFilter(scrapeResult.items);
+      console.log(`After heuristic filter: ${scrapeResult.items.length} items`);
     }
 
     if (scrapeResult && scrapeResult.items && scrapeResult.items.length > 0) {

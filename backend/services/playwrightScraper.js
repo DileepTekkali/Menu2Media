@@ -48,22 +48,33 @@ class PlaywrightScraperService {
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
-          '--disable-blink-features=AutomationControlled'
+          '--disable-blink-features=AutomationControlled',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process',
+          '--accept-lang=en-US,en',
+          '--disable-extensions'
         ]
       });
 
       const context = await browser.newContext({
         viewport: { width: 1920, height: 1080 },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        locale: 'en-US',
-        timezoneId: 'America/New_York'
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        locale: 'en-IN',
+        timezoneId: 'Asia/Kolkata',
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-IN,en;q=0.9',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
+        }
       });
 
       const page = await context.newPage();
 
       await page.route('**/*', (route) => {
         const type = route.request().resourceType();
-        if (['image', 'font', 'media', 'stylesheet'].includes(type)) {
+        if (['image', 'font', 'media'].includes(type)) {
           route.abort();
         } else {
           route.continue();
@@ -73,6 +84,12 @@ class PlaywrightScraperService {
       page.on('console', msg => {
         if (msg.type() === 'error') {
           console.log('Browser error:', msg.text());
+        }
+      });
+
+      page.on('response', response => {
+        if (response.url().includes('swiggy.com') && response.status() >= 400) {
+          console.log(`Swiggy response: ${response.status()} for ${response.url().substring(0, 80)}`);
         }
       });
 
@@ -327,6 +344,169 @@ class PlaywrightScraperService {
       if (!key || key.length < 2 || seen.has(key)) return false;
       seen.add(key);
       return true;
+    });
+  }
+
+  async scrapeMenuStealth(url, retries = 2) {
+    let browser;
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        console.log(`Stealth attempt ${attempt + 1} for ${url}`);
+        
+        browser = await chromium.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-features=IsolateOrigins,site-per-process,TranslateUI',
+            '--disable-extensions',
+            '--disable-plugins',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--disable-translate',
+            '--disable-background-networking',
+            '--no-first-run',
+            '--safebrowsing-disable-auto-update',
+            '--ignore-certificate-errors',
+            '--allow-running-insecure-content',
+            '--disable-web-security',
+            '--lang=en-US,en'
+          ]
+        });
+
+        const context = await browser.newContext({
+          viewport: { width: 1280, height: 800 },
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          locale: 'en-US',
+          timezoneId: 'America/New_York',
+          permissions: ['geolocation'],
+          extraHTTPHeaders: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0'
+          }
+        });
+
+        const page = await context.newPage();
+        
+        // Block bot detection
+        await page.addInitScript(() => {
+          Object.defineProperty(navigator, 'webdriver', { get: () => false });
+          window.navigator.chrome = { runtime: {} };
+          Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+          Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        });
+
+        // Don't block images - they might be needed for detection
+        await page.route('**/*', route => {
+          const type = route.request().resourceType();
+          if (['font'].includes(type)) {
+            route.abort();
+          } else {
+            route.continue();
+          }
+        });
+
+        await page.goto(url, { 
+          waitUntil: 'networkidle',
+          timeout: 60000 
+        });
+        
+        // Wait for content to load
+        await page.waitForTimeout(3000);
+        
+        // Extract menu items
+        const items = await this.extractMenuItemsFromPage(page);
+        
+        await browser.close();
+        
+        if (items.length > 0) {
+          return { success: true, items, method: 'stealth' };
+        }
+        
+      } catch (e) {
+        console.log(`Stealth attempt ${attempt + 1} error: ${e.message}`);
+      } finally {
+        if (browser) await browser.close().catch(() => {});
+      }
+      
+      await this.sleep(3000);
+    }
+    
+    return { success: false, items: [], method: 'stealth_failed', error: 'All attempts failed' };
+  }
+
+  async extractMenuItemsFromPage(page) {
+    return await page.evaluate(() => {
+      const items = [];
+      
+      // Try to find menu sections
+      const menuSelectors = [
+        '[data-testid*="menu"]',
+        '[class*="menu-item"]',
+        '[class*="product"]',
+        '[class*="item"]',
+        'li[class*="item"]',
+        'div[class*="dish"]',
+        'div[class*="food"]'
+      ];
+      
+      for (const selector of menuSelectors) {
+        const elements = document.querySelectorAll(selector);
+        elements.forEach(el => {
+          const text = el.innerText || '';
+          if (text.length > 5 && text.length < 200) {
+            const lines = text.split('\n').filter(l => l.trim());
+            if (lines.length >= 1) {
+              const name = lines[0].trim();
+              const description = lines.length > 1 ? lines.slice(1).join(' ').trim() : '';
+              
+              // Extract price if present
+              let price = 0;
+              const priceMatch = text.match(/[\$₹€£¥]\s*(\d+(?:\.\d{2})?)/);
+              if (priceMatch) {
+                price = parseFloat(priceMatch[1]);
+              }
+              
+              if (name && name.length > 2 && !items.some(i => i.name === name)) {
+                items.push({ name, description, price, category: 'Menu' });
+              }
+            }
+          }
+        });
+      }
+      
+      // Also try heading extraction
+      const headings = document.querySelectorAll('h2, h3, h4');
+      headings.forEach(h => {
+        const text = h.innerText.trim();
+        if (text.length > 3 && text.length < 100) {
+          const priceMatch = text.match(/[\$₹€£¥]\s*(\d+(?:\.\d{2})?)/);
+          if (priceMatch || text.length < 50) {
+            if (!items.some(i => i.name === text)) {
+              items.push({ 
+                name: text.replace(/[\$₹€£¥]\s*[\d.]+/, '').trim(), 
+                description: '', 
+                price: priceMatch ? parseFloat(priceMatch[1]) : 0, 
+                category: 'Menu' 
+              });
+            }
+          }
+        }
+      });
+      
+      return items;
     });
   }
 
