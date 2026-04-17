@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/restaurant_provider.dart';
 import '../providers/campaign_provider.dart';
+import '../models/menu_item.dart';
 import '../widgets/loading_indicator.dart';
 import 'creatives_gallery_screen.dart';
 
@@ -14,11 +15,10 @@ class CampaignConfigScreen extends StatefulWidget {
 
 class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
   String _campaignType = 'daily';
-  final Set<String> _selectedPlatforms = {'instagram'};
-  int _dishCount = 5;
-  String _tone = 'casual';
-  String _theme = 'casual';
-  List<String> _selectedColors = ['#FF6B35', '#2E4057'];
+  final Set<String> _selectedSizes = {'square'};
+  final Set<String> _selectedDishIds = {};
+  List<MenuItem> _menuItems = [];
+  bool _loadingMenu = true;
 
   final _campaignTypes = {
     'daily': {'label': 'Daily Specials', 'icon': '☀️'},
@@ -28,71 +28,87 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
     'combo': {'label': 'Combo Offers', 'icon': '🤝'},
   };
 
-  final _platforms = {
-    'instagram': {'icon': Icons.camera_alt, 'label': 'Instagram'},
-    'facebook': {'icon': Icons.facebook, 'label': 'Facebook'},
-    'whatsapp': {'icon': Icons.chat, 'label': 'WhatsApp'},
+  final _sizes = {
+    'square': {
+      'label': 'Square',
+      'icon': Icons.crop_square,
+      'desc': '1080×1080'
+    },
+    'story': {
+      'label': 'Story',
+      'icon': Icons.crop_portrait,
+      'desc': '1080×1920'
+    },
+    'landscape': {
+      'label': 'Landscape',
+      'icon': Icons.crop_landscape,
+      'desc': '1920×1080'
+    },
   };
 
-  final _tones = {
-    'casual': '😊 Casual',
-    'formal': '🎩 Formal',
-    'festive': '🎊 Festive',
-    'playful': '🎈 Playful',
-  };
+  @override
+  void initState() {
+    super.initState();
+    _loadMenuItems();
+  }
 
-  final _themes = {
-    'casual': '☕ Casual Cafe',
-    'luxury': '🍷 Luxury Dining',
-    'fast_food': '🍔 Fast Food',
-    'indian_ethnic': '🪔 Indian Ethnic',
-  };
+  Future<void> _loadMenuItems() async {
+    final restaurantProvider = context.read<RestaurantProvider>();
+    if (restaurantProvider.restaurant != null) {
+      final items = await restaurantProvider.getMenuItems();
+      setState(() {
+        _menuItems = items;
+        _loadingMenu = false;
+      });
+    }
+  }
 
-  final List<Map<String, dynamic>> _colorPalettes = [
-    {
-      'name': 'Spice',
-      'colors': ['#FF6B35', '#2E4057']
-    },
-    {
-      'name': 'Ocean',
-      'colors': ['#0077B6', '#00B4D8']
-    },
-    {
-      'name': 'Forest',
-      'colors': ['#1B4332', '#52B788']
-    },
-    {
-      'name': 'Sunset',
-      'colors': ['#F72585', '#7209B7']
-    },
-    {
-      'name': 'Gold',
-      'colors': ['#B5451B', '#F4A261']
-    },
-    {
-      'name': 'Night',
-      'colors': ['#0D1B2A', '#E43F6F']
-    },
-  ];
+  void _toggleDish(String dishId) {
+    setState(() {
+      if (_selectedDishIds.contains(dishId)) {
+        _selectedDishIds.remove(dishId);
+      } else if (_selectedDishIds.length < 5) {
+        _selectedDishIds.add(dishId);
+      }
+    });
+  }
+
+  void _toggleSize(String size) {
+    setState(() {
+      if (_selectedSizes.contains(size)) {
+        if (_selectedSizes.length > 1) {
+          _selectedSizes.remove(size);
+        }
+      } else {
+        _selectedSizes.add(size);
+      }
+    });
+  }
 
   void _generateCampaign() async {
     final restaurantProvider = context.read<RestaurantProvider>();
     final campaignProvider = context.read<CampaignProvider>();
 
     if (restaurantProvider.restaurant == null) return;
+    if (_selectedDishIds.isEmpty) return;
 
-    // Save branding to provider
-    restaurantProvider.setBrandColors(_selectedColors);
-    restaurantProvider.setTheme(_theme);
-    restaurantProvider.setTone(_tone);
+    final selectedDishes = _menuItems
+        .where((item) => _selectedDishIds.contains(item.id))
+        .map((item) => {
+              'id': item.id,
+              'name': item.name,
+              'description': item.description,
+              'price': item.price,
+              'category': item.category,
+              'image_url': item.imageUrl,
+            })
+        .toList();
 
-    await campaignProvider.createCampaign(
+    await campaignProvider.createCampaignWithDishes(
       restaurantId: restaurantProvider.restaurant!.id,
       campaignType: _campaignType,
-      formats: _getFormatsForPlatforms(),
-      dishCount: _dishCount,
-      tone: _tone,
-      colors: _selectedColors,
+      dishes: selectedDishes,
+      formats: _selectedSizes.toList(),
     );
 
     if (campaignProvider.error == null && mounted) {
@@ -106,20 +122,6 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
         );
       }
     }
-  }
-
-  List<String> _getFormatsForPlatforms() {
-    final formats = <String>[];
-    for (final platform in _selectedPlatforms) {
-      if (platform == 'instagram') {
-        formats.addAll(['instagram_square', 'instagram_story']);
-      } else if (platform == 'facebook') {
-        formats.add('facebook_post');
-      } else if (platform == 'whatsapp') {
-        formats.add('whatsapp_post');
-      }
-    }
-    return formats.toSet().toList();
   }
 
   @override
@@ -179,15 +181,11 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
               children: [
                 _buildSection('🎯 Campaign Type', _buildCampaignTypeSelector()),
                 const SizedBox(height: 20),
-                _buildSection('📱 Platforms', _buildPlatformSelector()),
+                _buildSection('📐 Image Sizes', _buildSizeSelector()),
                 const SizedBox(height: 20),
-                _buildSection('🍽️ Number of Dishes', _buildDishCountSlider()),
-                const SizedBox(height: 20),
-                _buildSection('🎨 Brand Colors', _buildColorPicker()),
-                const SizedBox(height: 20),
-                _buildSection('🖼️ Theme', _buildThemeSelector()),
-                const SizedBox(height: 20),
-                _buildSection('✍️ Caption Tone', _buildToneSelector()),
+                _buildSection(
+                    '🍽️ Select Dishes (${_selectedDishIds.length}/5)',
+                    _buildDishSelector()),
                 const SizedBox(height: 20),
                 _buildPreviewCard(),
                 const SizedBox(height: 28),
@@ -245,46 +243,50 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
     );
   }
 
-  Widget _buildPlatformSelector() {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: _platforms.entries.map((e) {
-        final selected = _selectedPlatforms.contains(e.key);
-        return GestureDetector(
-          onTap: () => setState(() {
-            if (selected) {
-              _selectedPlatforms.remove(e.key);
-            } else {
-              _selectedPlatforms.add(e.key);
-            }
-          }),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: selected
-                  ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
-                  : const Color(0xFF1A1A2E),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: selected ? const Color(0xFF4ECDC4) : Colors.white24,
+  Widget _buildSizeSelector() {
+    return Row(
+      children: _sizes.entries.map((e) {
+        final selected = _selectedSizes.contains(e.key);
+        return Expanded(
+          child: GestureDetector(
+            onTap: () => _toggleSize(e.key),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: EdgeInsets.only(right: e.key != 'landscape' ? 8 : 0),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: selected
+                    ? const Color(0xFF4ECDC4).withValues(alpha: 0.2)
+                    : const Color(0xFF1A1A2E),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected ? const Color(0xFF4ECDC4) : Colors.white24,
+                  width: selected ? 2 : 1,
+                ),
               ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(e.value['icon'] as IconData,
-                    size: 18,
-                    color: selected ? const Color(0xFF4ECDC4) : Colors.white54),
-                const SizedBox(width: 6),
-                Text(e.value['label'] as String,
+              child: Column(
+                children: [
+                  Icon(
+                    e.value['icon'] as IconData,
+                    size: 32,
+                    color: selected ? const Color(0xFF4ECDC4) : Colors.white54,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    e.value['label'] as String,
                     style: TextStyle(
                         color:
                             selected ? const Color(0xFF4ECDC4) : Colors.white60,
                         fontWeight:
-                            selected ? FontWeight.bold : FontWeight.normal)),
-              ],
+                            selected ? FontWeight.bold : FontWeight.normal),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    e.value['desc'] as String,
+                    style: const TextStyle(color: Colors.white38, fontSize: 10),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -292,149 +294,131 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
     );
   }
 
-  Widget _buildDishCountSlider() {
+  Widget _buildDishSelector() {
+    if (_loadingMenu) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFFF6B35)),
+      );
+    }
+
+    if (_menuItems.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A2E),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Text(
+            'No menu items available. Please scrape restaurant first.',
+            style: TextStyle(color: Colors.white54)),
+      );
+    }
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SliderTheme(
-          data: SliderThemeData(
-            activeTrackColor: const Color(0xFFFF6B35),
-            inactiveTrackColor: Colors.white12,
-            thumbColor: const Color(0xFFFF6B35),
-            overlayColor: const Color(0xFFFF6B35).withValues(alpha: 0.2),
-            valueIndicatorColor: const Color(0xFFFF6B35),
-            valueIndicatorTextStyle: const TextStyle(color: Colors.white),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF2A2A3E),
+            borderRadius: BorderRadius.circular(8),
           ),
-          child: Slider(
-            value: _dishCount.toDouble(),
-            min: 3,
-            max: 10,
-            divisions: 7,
-            label: '$_dishCount',
-            onChanged: (v) => setState(() => _dishCount = v.round()),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline,
+                  color: Color(0xFF4ECDC4), size: 16),
+              const SizedBox(width: 8),
+              Text(
+                'Select up to 5 dishes',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
+              ),
+            ],
           ),
         ),
-        Text('$_dishCount dishes selected for this campaign',
-            style: const TextStyle(color: Colors.white54, fontSize: 13)),
+        const SizedBox(height: 12),
+        ...(_menuItems.map((item) => _buildDishTile(item))),
       ],
     );
   }
 
-  Widget _buildColorPicker() {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: _colorPalettes.map((palette) {
-        final colors = palette['colors'] as List<String>;
-        final selected = _selectedColors[0] == colors[0];
-        return GestureDetector(
-          onTap: () => setState(() => _selectedColors = colors),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 72,
-            height: 44,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [_hexColor(colors[0]), _hexColor(colors[1])],
-              ),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: selected ? Colors.white : Colors.transparent,
-                width: selected ? 2.5 : 0,
-              ),
-              boxShadow: selected
-                  ? [
-                      BoxShadow(
-                          color: _hexColor(colors[0]).withValues(alpha: 0.5),
-                          blurRadius: 8)
-                    ]
-                  : [],
-            ),
-            child: selected
-                ? const Center(
-                    child: Icon(Icons.check, color: Colors.white, size: 20))
-                : Center(
-                    child: Text(palette['name'] as String,
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 10))),
+  Widget _buildDishTile(MenuItem item) {
+    final isSelected = _selectedDishIds.contains(item.id);
+    final isDisabled = !isSelected && _selectedDishIds.length >= 5;
+
+    return GestureDetector(
+      onTap: isDisabled ? null : () => _toggleDish(item.id),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFFFF6B35).withValues(alpha: 0.2)
+              : (isDisabled
+                  ? const Color(0xFF12121E)
+                  : const Color(0xFF1A1A2E)),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? const Color(0xFFFF6B35) : Colors.white12,
+            width: isSelected ? 2 : 1,
           ),
-        );
-      }).toList(),
-    );
-  }
-
-  Color _hexColor(String hex) {
-    try {
-      return Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
-    } catch (_) {
-      return const Color(0xFFFF6B35);
-    }
-  }
-
-  Widget _buildThemeSelector() {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: _themes.entries.map((e) {
-        final selected = _theme == e.key;
-        return GestureDetector(
-          onTap: () => setState(() => _theme = e.key),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: selected
-                  ? const Color(0xFFE040FB).withValues(alpha: 0.2)
-                  : const Color(0xFF1A1A2E),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: selected ? const Color(0xFFE040FB) : Colors.white24,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color:
+                    isSelected ? const Color(0xFFFF6B35) : Colors.transparent,
+                border: Border.all(
+                  color: isSelected ? const Color(0xFFFF6B35) : Colors.white38,
+                  width: 2,
+                ),
+              ),
+              child: isSelected
+                  ? const Icon(Icons.check, color: Colors.white, size: 16)
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.name,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14),
+                  ),
+                  if ((item.description ?? '').isNotEmpty)
+                    Text(
+                      item.description ?? '',
+                      style:
+                          const TextStyle(color: Colors.white54, fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
               ),
             ),
-            child: Text(e.value,
-                style: TextStyle(
-                    color: selected ? const Color(0xFFE040FB) : Colors.white60,
-                    fontWeight:
-                        selected ? FontWeight.bold : FontWeight.normal)),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildToneSelector() {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: _tones.entries.map((e) {
-        final selected = _tone == e.key;
-        return GestureDetector(
-          onTap: () => setState(() => _tone = e.key),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: selected
-                  ? const Color(0xFF4ECDC4).withValues(alpha: 0.15)
-                  : const Color(0xFF1A1A2E),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: selected ? const Color(0xFF4ECDC4) : Colors.white24,
+            if ((item.price ?? 0) > 0)
+              Text(
+                '\$${(item.price ?? 0).toStringAsFixed(2)}',
+                style: const TextStyle(
+                    color: Color(0xFF4ECDC4), fontWeight: FontWeight.w600),
               ),
-            ),
-            child: Text(e.value,
-                style: TextStyle(
-                    color: selected ? const Color(0xFF4ECDC4) : Colors.white60,
-                    fontWeight:
-                        selected ? FontWeight.bold : FontWeight.normal)),
-          ),
-        );
-      }).toList(),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildPreviewCard() {
     final restaurantProvider = context.read<RestaurantProvider>();
-    final formats = _getFormatsForPlatforms();
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -454,11 +438,11 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
           _previewRow('Restaurant', restaurantProvider.restaurant?.name ?? '-'),
           _previewRow(
               'Campaign', _campaignTypes[_campaignType]?['label'] ?? '-'),
-          _previewRow('Platforms', _selectedPlatforms.join(', ')),
-          _previewRow('Tone', _tones[_tone] ?? '-'),
-          _previewRow('Theme', _themes[_theme] ?? '-'),
-          _previewRow('Formats', '${formats.length} format(s)'),
-          _previewRow('Est. Creatives', '${_dishCount * formats.length}'),
+          _previewRow('Sizes',
+              _selectedSizes.map((s) => _sizes[s]?['label'] ?? s).join(', ')),
+          _previewRow('Dishes Selected', '${_selectedDishIds.length}'),
+          _previewRow('Est. Creatives',
+              '${_selectedDishIds.length * _selectedSizes.length}'),
         ],
       ),
     );
@@ -483,26 +467,32 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
   }
 
   Widget _buildGenerateButton() {
+    final canGenerate =
+        _selectedSizes.isNotEmpty && _selectedDishIds.isNotEmpty;
     return SizedBox(
       height: 56,
       child: ElevatedButton(
-        onPressed: _selectedPlatforms.isEmpty ? null : _generateCampaign,
+        onPressed: canGenerate ? _generateCampaign : null,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFFF6B35),
           disabledBackgroundColor: Colors.white12,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
-        child: const Row(
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.auto_awesome, color: Colors.white),
-            SizedBox(width: 10),
-            Text('Generate Creatives',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold)),
+            const Icon(Icons.auto_awesome, color: Colors.white),
+            const SizedBox(width: 10),
+            Text(
+              _selectedDishIds.isEmpty
+                  ? 'Select dishes first'
+                  : 'Generate Creatives',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold),
+            ),
           ],
         ),
       ),
@@ -510,7 +500,7 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
   }
 
   String _getProgressMessage(double progress) {
-    if (progress < 0.2) return 'Selecting best dishes...';
+    if (progress < 0.2) return 'Preparing selected dishes...';
     if (progress < 0.4) return 'Generating captions with AI...';
     if (progress < 0.65) return 'Creating food images...';
     if (progress < 0.85) return 'Building branded creatives...';

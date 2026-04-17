@@ -21,7 +21,9 @@ const validatePlatform = (platform) => {
 };
 
 const validateFormat = (format) => {
-  return ['instagram_square', 'instagram_story', 'facebook_post', 'whatsapp_post'].includes(format);
+  const validFormats = ['square', 'story', 'landscape'];
+  const normalized = format.replace(/^(instagram_|facebook_|whatsapp_)/, '');
+  return validFormats.includes(normalized);
 };
 
 const sanitizeString = (str) => {

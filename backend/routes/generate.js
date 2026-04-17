@@ -185,7 +185,7 @@ router.post('/generate-images', async (req, res) => {
 // POST /api/create-creatives
 router.post('/create-creatives', async (req, res) => {
   try {
-    const { restaurant_id, dishes, formats = ['instagram_square'], branding = {}, export_types } = req.body;
+    const { restaurant_id, dishes, formats = ['square'], branding = {}, export_types } = req.body;
 
     if (!restaurant_id || !validateUuid(restaurant_id)) {
       return res.status(400).json({ success: false, error: 'Valid restaurant_id is required' });
@@ -220,10 +220,8 @@ router.post('/create-creatives', async (req, res) => {
     if (exportTypes.length === 0) {
       return res.status(400).json({ success: false, error: 'At least one valid export type is required' });
     }
-    const platform = validFormats.includes('facebook_post') ? 'facebook'
-      : validFormats.includes('whatsapp_post') ? 'whatsapp'
-      : validFormats.includes('instagram_story') ? 'instagram'
-      : 'instagram';
+    const platform = validFormats.includes('landscape') ? 'social'
+      : 'social';
 
     const { data: campaign, error: campaignError } = await supabase
       .from('campaigns')
@@ -252,13 +250,33 @@ router.post('/create-creatives', async (req, res) => {
 
       for (const format of validFormats) {
         try {
-          // Reuse dish.image_url if already generated; else generate fresh
+          // Map format to sizeType
+          const sizeTypeMap = {
+            'square': 'square',
+            'story': 'story', 
+            'landscape': 'landscape'
+          };
+          const sizeType = sizeTypeMap[format] || 'square';
+          
+          // Get image buffer - download from url or use buffer
           let imageBuffer = null;
+          
+          // First try to download from dish.image_url
           if (dish.image_url) {
             imageBuffer = await imageGenerator.downloadAndProcess(dish.image_url);
           }
+          
+          // If no image from URL, try to use image_buffer from generateImages
+          if (!imageBuffer && dish.image_buffer) {
+            imageBuffer = Buffer.from(dish.image_buffer, 'base64');
+          }
+          
+          // If still no image, generate a new one for this format
           if (!imageBuffer) {
-            const generated = await imageGenerator.generateImage(dish.name, dish.description, 3, campaignType, req.body.festival_type);
+            console.log(`Generating image for ${dish.name} (${format})`);
+            const generated = await imageGenerator.generateImage(
+              dish.name, dish.description, 3, campaignType, req.body.festival_type, sizeType
+            );
             imageBuffer = generated.buffer;
           }
 
@@ -268,7 +286,7 @@ router.post('/create-creatives', async (req, res) => {
             cta: dish.cta || 'Order Now!'
           };
 
-          const creative = await creativeBuilder.buildCreative({
+          const creative = await creativeBuilder.buildCreativeDailySpecial({
             dish: enrichedDish,
             format,
             imageBuffer,

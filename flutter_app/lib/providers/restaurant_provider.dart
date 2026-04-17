@@ -108,6 +108,21 @@ class RestaurantProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<List<MenuItem>> getMenuItems() async {
+    if (_restaurant == null) return [];
+    try {
+      final items = await _apiService.getMenuItems(_restaurant!.id);
+      if (items.isNotEmpty) {
+        _menuItems = items;
+        notifyListeners();
+      }
+      return items;
+    } catch (e) {
+      debugPrint('Get menu items error: $e');
+      return _menuItems;
+    }
+  }
+
   void clear() {
     _restaurant = null;
     _menuItems = [];

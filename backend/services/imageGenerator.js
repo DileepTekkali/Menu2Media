@@ -12,7 +12,12 @@ const FESTIVE_THEMES = {
   pongal: "pot decoration, harvest theme, traditional setup, bright colors"
 };
 
-const BASE_PROMPT = `{food_item}, photorealistic, ultra realistic food photography, professional DSLR camera, 4k resolution, ultra detailed texture, natural soft lighting, shallow depth of field, macro lens, high dynamic range, realistic shadows, restaurant style plating, elegant composition, top view on wooden table, cinematic color grading, sharp focus, commercial food photography`;
+// Size configurations
+const SIZE_CONFIG = {
+  square: { width: 1080, height: 1080 },
+  story: { width: 1080, height: 1920 },
+  landscape: { width: 1200, height: 630 }
+};
 
 class ImageGeneratorService {
   constructor() {
@@ -33,64 +38,98 @@ class ImageGeneratorService {
     this.lastRequestTime = Date.now();
   }
 
-  async generateImage(dishName, description = '', retries = 3, campaignType = 'daily', festivalType = null) {
-    return this.generateFromPollinations(dishName, campaignType, festivalType);
+  async generateImage(dishName, description = '', retries = 3, campaignType = 'daily', festivalType = null, sizeType = 'square') {
+    const size = SIZE_CONFIG[sizeType] || SIZE_CONFIG.square;
+    return this.generateFromPollinations(dishName, campaignType, festivalType, sizeType, size);
   }
 
-  buildPrompt(dishName, campaignType, festivalType) {
-    // Base prompt with photorealistic food photography
-    const basePrompt = BASE_PROMPT.replace('{food_item}', dishName);
+  buildDarkPremiumPrompt(dish, sizeType = 'square') {
+    const layouts = {
+      square: `
+        square composition, subject slightly center right,
+        balanced empty space on left and top,
+        center-focused premium layout
+      `,
+      story: `
+        vertical composition, subject centered slightly lower,
+        large empty space at top and upper middle,
+        cinematic vertical spacing
+      `,
+      landscape: `
+        horizontal composition, subject placed on right side,
+        wide empty space on left side,
+        banner-style layout with clear left focus area
+      `
+    };
+
+    const layout = layouts[sizeType] || layouts.square;
+
+    return `
+dark premium food banner for ${dish},
+black background with warm golden lighting accents,
+spotlight on photorealistic ${dish},
+cinematic shadows, ultra detailed, DSLR lighting,
+${layout},
+clean composition with safe empty space for overlay,
+subtle gradients, high-end restaurant aesthetic,
+high resolution
+`.trim().replace(/\s+/g, ' ');
+  }
+
+  buildPrompt(dishName, campaignType, festivalType, sizeType) {
+    let basePrompt = this.buildDarkPremiumPrompt(dishName, sizeType);
     
-    // Only add festival themes for festive campaign type
     if (campaignType === 'festive' && festivalType && FESTIVE_THEMES[festivalType]) {
-      return `${basePrompt}, ${FESTIVE_THEMES[festivalType]}, festive themed`;
+      basePrompt += `, ${FESTIVE_THEMES[festivalType]}, festive themed`;
     }
     
-    // Daily, new_arrival, combo, weekend - just the base photorealistic prompt
     return basePrompt;
   }
 
-  async generateFromPollinations(dishName, campaignType = 'daily', festivalType = null) {
+  async generateFromPollinations(dishName, campaignType = 'daily', festivalType = null, sizeType = 'square', size = null) {
+    const finalSize = size || SIZE_CONFIG[sizeType] || SIZE_CONFIG.square;
+    
     const isRateLimited = (Date.now() - this.lastRateLimitTime) < this.rateLimitCooldown;
     if (isRateLimited) {
       console.log(`Rate limited, using placeholder for: ${dishName}`);
       return {
         success: true,
-        buffer: await this.generateFoodPlaceholder(dishName, 1080, 1080, campaignType),
+        buffer: await this.generateFoodPlaceholder(dishName, finalSize.width, finalSize.height, campaignType),
         method: 'placeholder'
       };
     }
 
     await this.waitForRateLimit();
 
-    const prompt = this.buildPrompt(dishName, campaignType, festivalType);
-    console.log(`Generating from Pollinations: ${dishName}`);
-    console.log(`Prompt: ${prompt}`);
+    const prompt = this.buildPrompt(dishName, campaignType, festivalType, sizeType);
+    console.log(`Generating from Pollinations: ${dishName} (${sizeType})`);
+    console.log(`Prompt: ${prompt.substring(0, 100)}...`);
     
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const encodedPrompt = encodeURIComponent(prompt);
         const seed = Date.now() + attempt * 1000;
-        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&nologo=true&seed=${seed}`;
+        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${finalSize.width}&height=${finalSize.height}&nologo=true&seed=${seed}`;
 
-        console.log(`Pollinations attempt ${attempt + 1} for: ${dishName}`);
+        console.log(`Pollinations attempt ${attempt + 1} for: ${dishName} (${sizeType})`);
         
-        // NO TIMEOUT - let it take as long as needed
         const response = await axios.get(imageUrl, {
           responseType: 'arraybuffer'
         });
 
         if (response.data && response.data.byteLength > 5000) {
           const buffer = await sharp(Buffer.from(response.data))
-            .resize(1080, 1080, { fit: 'cover' })
+            .resize(finalSize.width, finalSize.height, { fit: 'cover' })
             .jpeg({ quality: 90 })
             .toBuffer();
             
-          console.log(`Success: Generated image for ${dishName}`);
+          console.log(`Success: Generated ${sizeType} image for ${dishName}`);
           return {
             success: true,
             buffer,
-            method: 'pollinations'
+            method: 'pollinations',
+            sizeType,
+            dimensions: `${finalSize.width}x${finalSize.height}`
           };
         }
       } catch (error) {
@@ -111,9 +150,113 @@ class ImageGeneratorService {
     console.log(`Using food-styled placeholder for: ${dishName}`);
     return {
       success: true,
-      buffer: await this.generateFoodPlaceholder(dishName, 1080, 1080, campaignType),
+      buffer: await this.generateFoodPlaceholder(dishName, finalSize.width, finalSize.height, campaignType),
       method: 'placeholder'
     };
+  }
+
+  getSizeConfig() {
+    return SIZE_CONFIG;
+  }
+
+  async waitForRateLimit() {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    if (timeSinceLastRequest < this.minRequestInterval) {
+      const waitTime = this.minRequestInterval - timeSinceLastRequest;
+      console.log(`Rate limiting: waiting ${waitTime/1000}s before next request`);
+      await new Promise(r => setTimeout(r, waitTime));
+    }
+    this.lastRequestTime = Date.now();
+  }
+
+  async generateImage(dishName, description = '', retries = 3, campaignType = 'daily', festivalType = null, sizeType = 'square') {
+    const size = SIZE_CONFIG[sizeType] || SIZE_CONFIG.square;
+    return this.generateFromPollinations(dishName, campaignType, festivalType, sizeType, size);
+  }
+
+  async generateFromPollinations(dishName, campaignType = 'daily', festivalType = null, sizeType = 'square', size = null) {
+    const finalSize = size || SIZE_CONFIG[sizeType] || SIZE_CONFIG.square;
+    
+    const isRateLimited = (Date.now() - this.lastRateLimitTime) < this.rateLimitCooldown;
+    if (isRateLimited) {
+      console.log(`Rate limited, using placeholder for: ${dishName}`);
+      return {
+        success: true,
+        buffer: await this.generateFoodPlaceholder(dishName, finalSize.width, finalSize.height, campaignType),
+        method: 'placeholder'
+      };
+    }
+
+    await this.waitForRateLimit();
+
+    const prompt = this.buildDarkPremiumPrompt(dishName, sizeType);
+    
+    if (campaignType === 'festive' && festivalType && FESTIVE_THEMES[festivalType]) {
+      prompt += `, ${FESTIVE_THEMES[festivalType]}, festive themed`;
+    }
+    
+    console.log(`Generating from Pollinations: ${dishName} (${sizeType})`);
+    console.log(`Prompt: ${prompt.substring(0, 100)}...`);
+    
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const encodedPrompt = encodeURIComponent(prompt);
+        const seed = Date.now() + attempt * 1000;
+        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${finalSize.width}&height=${finalSize.height}&nologo=true&seed=${seed}`;
+
+        console.log(`Pollinations attempt ${attempt + 1} for: ${dishName} (${sizeType})`);
+        
+        const response = await axios.get(imageUrl, {
+          responseType: 'arraybuffer'
+        });
+
+        if (response.data && response.data.byteLength > 5000) {
+          const buffer = await sharp(Buffer.from(response.data))
+            .resize(finalSize.width, finalSize.height, { fit: 'cover' })
+            .jpeg({ quality: 90 })
+            .toBuffer();
+            
+          console.log(`Success: Generated ${sizeType} image for ${dishName}`);
+          return {
+            success: true,
+            buffer,
+            method: 'pollinations',
+            sizeType,
+            dimensions: `${finalSize.width}x${finalSize.height}`
+          };
+        }
+      } catch (error) {
+        const is429 = error.response?.status === 429;
+        if (is429) {
+          console.log(`Rate limited (429), cooling down for 60s`);
+          this.lastRateLimitTime = Date.now();
+          await new Promise(r => setTimeout(r, 60000));
+          continue;
+        }
+        console.log(`Pollinations attempt ${attempt + 1} failed:`, error.message);
+        if (attempt < 4) {
+          await new Promise(r => setTimeout(r, 5000));
+        }
+      }
+    }
+    
+    console.log(`Using food-styled placeholder for: ${dishName}`);
+    return {
+      success: true,
+      buffer: await this.generateFoodPlaceholder(dishName, finalSize.width, finalSize.height, campaignType),
+      method: 'placeholder'
+    };
+  }
+
+  buildPrompt(dishName, campaignType, festivalType, sizeType) {
+    let prompt = this.buildDarkPremiumPrompt(dishName, sizeType);
+    
+    if (campaignType === 'festive' && festivalType && FESTIVE_THEMES[festivalType]) {
+      prompt += `, ${FESTIVE_THEMES[festivalType]}, festive themed`;
+    }
+    
+    return prompt;
   }
 
   detectFoodType(dishName, description) {

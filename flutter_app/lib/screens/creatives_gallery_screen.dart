@@ -20,10 +20,9 @@ class _CreativesGalleryScreenState extends State<CreativesGalleryScreen> {
 
   final _formatFilters = {
     'all': 'All',
-    'instagram_square': 'Instagram',
-    'instagram_story': 'Story',
-    'facebook_post': 'Facebook',
-    'whatsapp_post': 'WhatsApp',
+    'square': 'Square',
+    'story': 'Story',
+    'landscape': 'Landscape',
   };
 
   List<Creative> _filtered(List<Creative> all) {
