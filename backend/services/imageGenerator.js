@@ -52,32 +52,32 @@ class ImageGeneratorService {
     const layouts = {
       square: `
         square composition, subject slightly center-right,
-        balanced empty space on left and top for overlay text,
-        center-focused premium layout
+        large dark empty negative space on left side,
+        center-focused premium composition
       `,
       story: `
-        vertical composition, subject centered slightly lower middle,
-        large empty space at top third for text overlay,
-        cinematic vertical spacing
+        vertical composition, subject placed lower middle,
+        large dark empty negative space at the top third,
+        cinematic vertical composition
       `,
       landscape: `
         horizontal composition, subject placed on far right side,
-        wide clear empty space on left half for text panel,
-        wide banner-style layout
+        wide dark empty negative space on left half,
+        wide horizontal composition
       `
     };
 
     const layout = layouts[sizeType] || layouts.square;
 
     return `
-dark premium food photography banner for ${dish},
+dark premium food photography of ${dish},
 pure black background with warm amber and golden rim lighting,
 spotlight dramatically illuminating photorealistic ${dish},
 cinematic deep shadows, ultra detailed, DSLR macro photography,
 ${layout},
-clean composition with safe dark empty zone for text overlay,
+clean composition with wide dark empty zones,
 subtle warm gradients, upscale restaurant aesthetic,
-8K ultra high resolution, no text, no watermark
+8K ultra high resolution, absolutely NO text, no letters, no watermark
 `.trim().replace(/\s+/g, ' ');
   }
 

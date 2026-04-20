@@ -12,14 +12,16 @@ async function fetchLogoBuffer(websiteUrl) {
     const origin = new URL(websiteUrl).origin;
 
     // Candidates in priority order
-    const candidates = [
+    const isImg = /\.(png|jpg|jpeg|svg|webp|ico)(\?.*)?$/i.test(websiteUrl);
+    const candidates = isImg ? [websiteUrl] : [];
+    candidates.push(
       `${origin}/favicon.ico`,
       `${origin}/logo.png`,
       `${origin}/logo.svg`,
       `${origin}/images/logo.png`,
       `${origin}/assets/logo.png`,
       `${origin}/wp-content/uploads/logo.png`
-    ];
+    );
 
     // Also try Open Graph image from the page HTML
     try {
@@ -105,9 +107,9 @@ function formatPrice(rawPrice, currencySymbol) {
   // If rawPrice is already a string with a currency symbol, use it as-is
   if (typeof rawPrice === 'string' && /[$\u20B9\u20AC\u00A3\u00A5]/.test(rawPrice)) return rawPrice.trim();
   // Map 3-letter ISO code to symbol
-  const sym = CURRENCY_SYMBOLS[String(currencySymbol || '').toUpperCase()] || currencySymbol || '\u20B9';
+  const sym = CURRENCY_SYMBOLS[String(currencySymbol || '').toUpperCase()] || currencySymbol || '$';
   const num = parseFloat(String(rawPrice).replace(/[^\d.]/g, ''));
-  if (isNaN(num)) return '';
+  if (isNaN(num) || num === 0) return '';
   return `${sym}${Math.round(num)}`;
 }
 
@@ -124,12 +126,7 @@ function detectCurrencySymbol(dish) {
   if (/\u00A5/.test(priceStr))   return 'JPY';
   if (/\u20B9/.test(priceStr))   return 'INR';
 
-  // Heuristic from price magnitude
-  const num = parseFloat(priceStr.replace(/[^\d.]/g, ''));
-  if (num > 0 && num <= 100)  return 'USD'; // small number → dollars
-  if (num > 100)              return 'INR'; // large number → rupees
-
-  return 'INR'; // default
+  return 'USD'; // default to USD
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,30 +268,36 @@ class CreativeBuilderService {
     const innerW = panelW - px * 2;
 
     // Font sizes – generous for 1080px
-    const rNameFs  = 22;
+    const rNameFs  = 31; // Increased by 5
     const hdlFs    = 21;
     const nameFs   = 44;
-    const descFs   = 21;   // BIGGER than before
+    
+    // Dynamic description font size
+    let descFs = 21;
+    if (description.length > 200) descFs = 17;
+    else if (description.length > 130) descFs = 19;
+    
     const priceFs  = 40;
     const ctaFs    = 18;
     const nameLineH = Math.round(nameFs * 1.2);
     const descLineH = Math.round(descFs * 1.5);
 
     const nameLines = this.wrapText(name.toUpperCase(), Math.floor(innerW / (nameFs * 0.60)), 2);
-    const descLines = this.wrapText(description,        Math.floor(innerW / (descFs * 0.54)), 3);
+    const descLines = this.wrapText(description,        Math.floor(innerW / (descFs * 0.54)), 4);
 
-    // Vertical layout
-    const logoY    = hasLogo ? 20 : -1;
-    const rNameY   = hasLogo ? 120 : 70;
-    const divY1    = rNameY + 14;
+    // Vertical layout & Logo
+    const logoSize = 65;
+    const logoY    = hasLogo ? 50 : -1;
+    const rNameX   = hasLogo ? px + logoSize + 16 : px;
+    const rNameY   = hasLogo ? 92 : 80;
+    const divY1    = hasLogo ? logoY + logoSize + 16 : rNameY + 14;
 
-    let y = rNameY + 52;
-    const badgeY = y; const badgeH = 42; y += badgeH + 24;
+    let y = divY1 + 30;
+    
     const divY2  = y; y += 18;
     const nameY  = y + nameFs + (nameLines.length > 1 ? nameLineH : 0);
     y = nameY + (nameLines.length > 1 ? nameLineH : 5) + 22;
 
-    // Quoted description opening mark
     const descY      = y + descFs;
     y = descY + descLines.length * descLineH + 16;
 
@@ -330,25 +333,23 @@ class CreativeBuilderService {
   <!-- Left accent stripe -->
   <rect x="0" y="0" width="6" height="${height}" fill="url(#accentGrad)"/>
 
+  <!-- ── TOP STANDARD HEADING RIBBON ── -->
+  <line x1="0" y1="2" x2="${width}" y2="2" stroke="${accent}" stroke-width="4" opacity="0.8"/>
+  <rect x="0" y="4" width="${width}" height="38" fill="${accent}" opacity="0.95"/>
+  <text x="${width / 2}" y="29"
+    font-family="'Trebuchet MS',Arial,sans-serif"
+    font-size="19" font-weight="bold"
+    fill="white" text-anchor="middle"
+    letter-spacing="4">${this.escapeXml(headline.toUpperCase())}</text>
+
   <!-- ── RESTAURANT NAME ── -->
-  <text x="${px}" y="${rNameY}"
+  <text x="${rNameX}" y="${rNameY}"
     font-family="Georgia,'Times New Roman',serif"
     font-size="${rNameFs}" font-weight="bold"
     fill="white" text-anchor="start"
-    filter="url(#bg)">${this.escapeXml(restaurantName.substring(0, 28).toUpperCase())}</text>
+    filter="url(#bg)">${this.escapeXml(restaurantName.substring(0, 24).toUpperCase())}</text>
   <line x1="${px}" y1="${divY1}" x2="${panelW - px}" y2="${divY1}"
     stroke="${accent}" stroke-width="1.5" opacity="0.55"/>
-
-  <!-- ── TODAY'S SPECIAL BADGE (single instance) ── -->
-  <rect x="${px}" y="${badgeY}" width="${innerW}" height="${badgeH}"
-    rx="7" fill="${accent}" opacity="0.13"/>
-  <rect x="${px}" y="${badgeY}" width="${innerW}" height="${badgeH}"
-    rx="7" fill="none" stroke="${accent}" stroke-width="1.3" opacity="0.65"/>
-  <text x="${panelW / 2}" y="${badgeY + badgeH / 2 + 7}"
-    font-family="'Trebuchet MS',Arial,sans-serif"
-    font-size="${hdlFs}" font-weight="bold"
-    fill="${accent}" text-anchor="middle"
-    filter="url(#gf)">- ${this.escapeXml(headline.substring(0, 22))} -</text>
 
   <!-- Thin rule -->
   <line x1="${px}" y1="${divY2}" x2="${panelW - px}" y2="${divY2}"
@@ -358,10 +359,14 @@ class CreativeBuilderService {
   ${this.renderWrappedText(nameLines, px, nameY, nameFs, nameLineH, 'white',
     "'Arial Black',Impact,sans-serif", '900', 'start', 'ds')}
 
-  <!-- ── QUOTED DESCRIPTION ── -->
+  <!-- ── STYLISH QUOTE BACKGROUND ── -->
+  <text x="${px - 8}" y="${descY + descFs * 3.5}"
+    font-family="Georgia,serif" font-size="${descFs * 7}" font-weight="bold"
+    fill="${accent}" opacity="0.12">“</text>
+  <!-- ── DESCRIPTION ── -->
   ${this.renderWrappedText(
     descLines,
-    px + 6, descY, descFs, descLineH,
+    px + 8, descY, descFs, descLineH,
     'rgba(248,232,210,0.92)', "Georgia,'Times New Roman',serif",
     'normal', 'start', 'ds')}
 
@@ -415,29 +420,34 @@ class CreativeBuilderService {
     const px     = 60;
     const innerW = width - px * 2;
 
-    const rNameFs  = 32;
+    const rNameFs  = 45; // Increased by 5
     const hdlFs    = 30;
     const nameFs   = 60;
-    const descFs   = 26;   // BIGGER
+    
+    // Dynamic description sizing
+    let descFs = 26;
+    if (description.length > 200) descFs = 21;
+    else if (description.length > 130) descFs = 24;
+
     const priceFs  = 52;
     const ctaFs    = 24;
     const nameLineH = Math.round(nameFs * 1.18);
     const descLineH = Math.round(descFs * 1.55);
 
     const nameLines = this.wrapText(name.toUpperCase(), Math.floor(innerW / (nameFs * 0.58)), 2);
-    const descLines = this.wrapText(description,        Math.floor(innerW / (descFs * 0.52)), 2);
+    const descLines = this.wrapText(description,        Math.floor(innerW / (descFs * 0.52)), 4);
 
     // Image-area: restaurant name at top
-    const rNameY = hasLogo ? 130 : 80;
+    const logoSize = 100;
+    const rNameY = hasLogo ? 172 : 110;
 
     // Panel-area layout
     let py = panelY + 28;
-    const badgeY = py; const badgeH = 56; py += badgeH + 26;
+    
     const divY   = py; py += 18;
     const nameY  = py + nameFs + (nameLines.length > 1 ? nameLineH : 0);
     py = nameY + (nameLines.length > 1 ? nameLineH : 6) + 24;
 
-    
     const descY      = py + descFs;
     py = descY + descLines.length * descLineH + 22;
 
@@ -477,23 +487,21 @@ class CreativeBuilderService {
   <!-- Accent top stripe -->
   <rect x="0" y="${panelY}" width="${width}" height="5" fill="url(#accentGrad)"/>
 
+  <!-- ── TOP STANDARD HEADING RIBBON ── -->
+  <line x1="0" y1="2" x2="${width}" y2="2" stroke="${accent}" stroke-width="6" opacity="0.8"/>
+  <rect x="0" y="5" width="${width}" height="55" fill="${accent}" opacity="0.95"/>
+  <text x="${width / 2}" y="42"
+    font-family="'Trebuchet MS',Arial,sans-serif"
+    font-size="28" font-weight="bold"
+    fill="white" text-anchor="middle"
+    letter-spacing="5">${this.escapeXml(headline.toUpperCase())}</text>
+
   <!-- ── RESTAURANT NAME (over image top) ── -->
   <text x="${width / 2}" y="${rNameY}"
     font-family="Georgia,'Times New Roman',serif"
     font-size="${rNameFs}" font-weight="bold"
     fill="white" text-anchor="middle"
     filter="url(#bg)">${this.escapeXml(restaurantName.substring(0, 30).toUpperCase())}</text>
-
-  <!-- ── TODAY'S SPECIAL BADGE ── -->
-  <rect x="${px}" y="${badgeY}" width="${innerW}" height="${badgeH}"
-    rx="9" fill="${accent}" opacity="0.14"/>
-  <rect x="${px}" y="${badgeY}" width="${innerW}" height="${badgeH}"
-    rx="9" fill="none" stroke="${accent}" stroke-width="1.6" opacity="0.60"/>
-  <text x="${width / 2}" y="${badgeY + badgeH / 2 + 10}"
-    font-family="'Trebuchet MS',Arial,sans-serif"
-    font-size="${hdlFs}" font-weight="bold"
-    fill="${accent}" text-anchor="middle"
-    filter="url(#gf)">- ${this.escapeXml(headline.substring(0, 25))} -</text>
 
   <line x1="${px}" y1="${divY}" x2="${width - px}" y2="${divY}"
     stroke="${accent}" stroke-width="1.2" opacity="0.38"/>
@@ -502,7 +510,11 @@ class CreativeBuilderService {
   ${this.renderWrappedText(nameLines, px, nameY, nameFs, nameLineH, 'white',
     "'Arial Black',Impact,sans-serif", '900', 'start', 'ds')}
 
-  <!-- ── QUOTED DESCRIPTION ── -->
+  <!-- ── STYLISH QUOTE BACKGROUND ── -->
+  <text x="${px - 10}" y="${descY + descFs * 3.5}"
+    font-family="Georgia,serif" font-size="${descFs * 7}" font-weight="bold"
+    fill="${accent}" opacity="0.12">“</text>
+  <!-- ── DESCRIPTION ── -->
   ${this.renderWrappedText(descLines, px + 8, descY, descFs, descLineH,
     'rgba(248,232,210,0.90)', "Georgia,'Times New Roman',serif",
     'normal', 'start', 'ds')}
@@ -546,23 +558,31 @@ class CreativeBuilderService {
     const px     = 34;
     const innerW = panelW - px * 2;
 
-    const rNameFs  = 18;
+    const rNameFs  = 25; // Increased by 5
     const hdlFs    = 17;
     const nameFs   = 32;
-    const descFs   = 16;   // BIGGER than 14
+    
+    // Dynamic description sizing
+    let descFs = 16;
+    if (description.length > 200) descFs = 13;
+    else if (description.length > 130) descFs = 14;
+
     const priceFs  = 32;
     const ctaFs    = 15;
     const nameLineH = Math.round(nameFs * 1.18);
     const descLineH = Math.round(descFs * 1.55);
 
     const nameLines = this.wrapText(name.toUpperCase(), Math.floor(innerW / (nameFs * 0.61)), 2);
-    const descLines = this.wrapText(description,        Math.floor(innerW / (descFs * 0.54)), 3);
+    const descLines = this.wrapText(description,        Math.floor(innerW / (descFs * 0.54)), 4);
 
-    const rNameY = hasLogo ? 108 : 50;
-    const divY1  = rNameY + 10;
+    const logoSize = 50;
+    const logoY    = hasLogo ? 35 : -1;
+    const rNameX   = hasLogo ? px + logoSize + 14 : px;
+    const rNameY   = hasLogo ? 68 : 50;
+    const divY1    = hasLogo ? logoY + logoSize + 14 : rNameY + 10;
 
-    let y = rNameY + 42;
-    const badgeY = y; const badgeH = 36; y += badgeH + 18;
+    let y = divY1 + 18;
+    
     const divY2  = y; y += 14;
     const nameY  = y + nameFs + (nameLines.length > 1 ? nameLineH : 0);
     y = nameY + (nameLines.length > 1 ? nameLineH : 4) + 16;
@@ -600,25 +620,23 @@ class CreativeBuilderService {
   <!-- Left accent stripe -->
   <rect x="0" y="0" width="5" height="${height}" fill="url(#accentGrad)"/>
 
+  <!-- ── TOP STANDARD HEADING RIBBON ── -->
+  <line x1="0" y1="2" x2="${width}" y2="2" stroke="${accent}" stroke-width="3" opacity="0.8"/>
+  <rect x="0" y="3" width="${width}" height="28" fill="${accent}" opacity="0.95"/>
+  <text x="${width / 2}" y="22"
+    font-family="'Trebuchet MS',Arial,sans-serif"
+    font-size="15" font-weight="bold"
+    fill="white" text-anchor="middle"
+    letter-spacing="3">${this.escapeXml(headline.toUpperCase())}</text>
+
   <!-- ── RESTAURANT NAME ── -->
-  <text x="${px}" y="${rNameY}"
+  <text x="${rNameX}" y="${rNameY}"
     font-family="Georgia,'Times New Roman',serif"
     font-size="${rNameFs}" font-weight="bold"
     fill="white" text-anchor="start"
     filter="url(#bg)">${this.escapeXml(restaurantName.substring(0, 30).toUpperCase())}</text>
   <line x1="${px}" y1="${divY1}" x2="${panelW - px}" y2="${divY1}"
     stroke="${accent}" stroke-width="1" opacity="0.50"/>
-
-  <!-- ── TODAY'S SPECIAL BADGE ── -->
-  <rect x="${px}" y="${badgeY}" width="${innerW}" height="${badgeH}"
-    rx="5" fill="${accent}" opacity="0.13"/>
-  <rect x="${px}" y="${badgeY}" width="${innerW}" height="${badgeH}"
-    rx="5" fill="none" stroke="${accent}" stroke-width="1" opacity="0.55"/>
-  <text x="${panelW / 2}" y="${badgeY + badgeH / 2 + 6}"
-    font-family="'Trebuchet MS',Arial,sans-serif"
-    font-size="${hdlFs}" font-weight="bold"
-    fill="${accent}" text-anchor="middle"
-    filter="url(#gf)">- ${this.escapeXml(headline.substring(0, 22))} -</text>
 
   <line x1="${px}" y1="${divY2}" x2="${panelW - px}" y2="${divY2}"
     stroke="${accent}" stroke-width="1" opacity="0.32"/>
@@ -627,7 +645,11 @@ class CreativeBuilderService {
   ${this.renderWrappedText(nameLines, px, nameY, nameFs, nameLineH, 'white',
     "'Arial Black',Impact,sans-serif", '900', 'start', 'ds')}
 
-  <!-- ── QUOTED DESCRIPTION ── -->
+  <!-- ── STYLISH QUOTE BACKGROUND ── -->
+  <text x="${px - 6}" y="${descY + descFs * 3.5}"
+    font-family="Georgia,serif" font-size="${descFs * 7}" font-weight="bold"
+    fill="${accent}" opacity="0.12">“</text>
+  <!-- ── DESCRIPTION ── -->
   ${this.renderWrappedText(descLines, px + 6, descY, descFs, descLineH,
     'rgba(248,232,210,0.90)', "Georgia,'Times New Roman',serif",
     'normal', 'start', 'ds')}
@@ -685,11 +707,16 @@ class CreativeBuilderService {
     const name           = dish.name || 'Special Dish';
     const currencySymbol = detectCurrencySymbol(dish);
     const price          = formatPrice(dish.price, currencySymbol);
-    const headline       = (caption?.headline || "Today's Special").replace(/^[^\w]*/, '');
+    
+    let headline         = (caption?.headline || "Today's Special").replace(/^[^\w]*/, '');
+    if (campaignType === 'daily' && !/🔥/.test(headline)) {
+      headline = `${headline} 🔥`;
+    }
+    
     const cta            = caption?.cta || 'Order Now';
     const restaurantName = dish.restaurant_name || 'Our Restaurant';
-    const rawDesc        = caption?.caption || dish.description || '';
-    const description    = rawDesc ? `\u201c${rawDesc}\u201d` : '';
+    // Description text ONLY (the quote is rendered via SVG element, not inside the string)
+    const description    = caption?.caption || dish.description || '';
     const accent         = this.sanitizeHex(style?.accent || '#FF6B35', '#FF6B35');
     const hasLogo        = !!(dish.logo_url || dish.logo_buffer);
 
@@ -753,15 +780,25 @@ class CreativeBuilderService {
       }
 
       if (logoBuf) {
-        // Place logo top-left inside panel (80×80, with 6px left-stripe offset)
-        const logoSize = format === 'story' ? 90 : 80;
+        let logoTop, logoLeft, logoSize;
+        if (format === 'story') {
+           logoSize = 100;
+           logoTop = 45;
+           logoLeft = Math.floor(width / 2) - Math.floor(logoSize / 2);
+        } else if (format === 'landscape') {
+           logoSize = 50;
+           logoTop = 35; 
+           logoLeft = 34; // Matches px in landscape
+        } else { // square
+           logoSize = 65;
+           logoTop = 50;
+           logoLeft = 38; // Matches px in square
+        }
         const resizedLogo = await sharp(logoBuf)
           .resize(logoSize, logoSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
           .png()
           .toBuffer();
 
-        const logoTop  = 20;
-        const logoLeft = format === 'story' ? Math.floor(width / 2) - Math.floor(logoSize / 2) : 14;
         composites.push({ input: resizedLogo, top: logoTop, left: logoLeft });
       }
 
