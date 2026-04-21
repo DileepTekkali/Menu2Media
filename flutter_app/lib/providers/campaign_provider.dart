@@ -32,6 +32,7 @@ class CampaignProvider extends ChangeNotifier {
     required List<String> formats,
     String tone = 'casual',
     List<String>? colors,
+    String? festivalType,
   }) async {
     _isLoading = true;
     _error = null;
@@ -101,6 +102,7 @@ class CampaignProvider extends ChangeNotifier {
         platform: formats.contains('facebook_post') ? 'facebook' : 'instagram',
         colors: colors ?? ['#FF6B35', '#2E4057'],
         tone: tone,
+        festivalType: festivalType,
       );
 
       _progress = 1.0;

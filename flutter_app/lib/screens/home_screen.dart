@@ -12,7 +12,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
+      backgroundColor: const Color(0xFF0A0A12),
       body: SafeArea(
         child: Consumer<RestaurantProvider>(
           builder: (context, provider, _) {
@@ -31,26 +31,29 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildInputView(BuildContext context, RestaurantProvider provider) {
     return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildHeroSection(context),
+          _buildHeroSection(context, provider),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                UrlInputForm(
-                  isLoading: provider.isLoading,
-                  onSubmit: (url, name) => provider.scrapeRestaurant(url, name),
-                ),
+                // Input card
+                _buildInputCard(context, provider),
+
                 if (provider.hasData) ...[
                   const SizedBox(height: 20),
                   _buildSuccessCard(context, provider),
                 ],
-                const SizedBox(height: 24),
-                _buildHowItWorks(),
+
                 const SizedBox(height: 32),
+                _buildHowItWorks(),
+                const SizedBox(height: 16),
+                _buildFeaturesRow(),
+                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -59,92 +62,122 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeroSection(BuildContext context) {
+  // ── Hero ───────────────────────────────────────────────────────────────────
+  Widget _buildHeroSection(BuildContext context, RestaurantProvider provider) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 32),
+      padding: const EdgeInsets.fromLTRB(24, 36, 24, 28),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460)],
+          colors: [Color(0xFF0F0F1E), Color(0xFF141428), Color(0xFF0A1628)],
+          stops: [0.0, 0.5, 1.0],
         ),
       ),
       child: Column(
         children: [
-          // Top row: logo + history button
+          // Top bar
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF6B35).withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: const Color(0xFFFF6B35).withValues(alpha: 0.5)),
-                ),
-                child: const Text('🍴', style: TextStyle(fontSize: 24)),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF6B35).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: const Color(0xFFFF6B35).withValues(alpha: 0.4)),
+                    ),
+                    child: const Text('🍴', style: TextStyle(fontSize: 18)),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Menu2Media',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
               ),
               Builder(
-                  builder: (context) => GestureDetector(
-                        onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const CampaignsListScreen())),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white24),
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.history,
-                                  color: Colors.white70, size: 16),
-                              SizedBox(width: 6),
-                              Text('History',
-                                  style: TextStyle(
-                                      color: Colors.white70, fontSize: 13)),
-                            ],
-                          ),
-                        ),
-                      )),
+                builder: (ctx) => GestureDetector(
+                  onTap: () => Navigator.push(ctx,
+                      MaterialPageRoute(
+                          builder: (_) => const CampaignsListScreen())),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.1)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.history_rounded,
+                            color: Colors.white54, size: 15),
+                        SizedBox(width: 6),
+                        Text('History',
+                            style:
+                                TextStyle(color: Colors.white54, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 32),
-          // Headline
+
+          const SizedBox(height: 36),
+
+          // Headline with gradient
           ShaderMask(
             shaderCallback: (bounds) => const LinearGradient(
-              colors: [Color(0xFFFF6B35), Color(0xFF4ECDC4)],
+              colors: [Color(0xFFFF6B35), Color(0xFFFFAB76), Color(0xFF4ECDC4)],
+              stops: [0.0, 0.5, 1.0],
             ).createShader(bounds),
             child: const Text(
               'Restaurant\nCreatives AI',
               style: TextStyle(
-                  fontSize: 42,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  height: 1.15),
+                fontSize: 44,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                height: 1.1,
+                letterSpacing: -0.5,
+              ),
               textAlign: TextAlign.center,
             ),
           ),
-          const SizedBox(height: 12),
+
+          const SizedBox(height: 14),
+
           const Text(
-            'Paste your restaurant URL → Get stunning\nsocial media creatives in minutes',
-            style: TextStyle(color: Colors.white60, fontSize: 15, height: 1.5),
+            'Paste your restaurant URL and get\npremium social media banners instantly',
+            style: TextStyle(
+              color: Color(0xFF7A7A9A),
+              fontSize: 14.5,
+              height: 1.6,
+            ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
-          // Platform badges
+
+          const SizedBox(height: 22),
+
+          // Platform chips
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _platformBadge('📸 Instagram'),
+              _platformChip('📸', 'Instagram'),
               const SizedBox(width: 8),
-              _platformBadge('📘 Facebook'),
+              _platformChip('📘', 'Facebook'),
               const SizedBox(width: 8),
-              _platformBadge('💬 WhatsApp'),
+              _platformChip('💬', 'WhatsApp'),
             ],
           ),
         ],
@@ -152,27 +185,65 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _platformBadge(String label) {
+  Widget _platformChip(String emoji, String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
-      child: Text(label,
-          style: const TextStyle(color: Colors.white60, fontSize: 12)),
+      child: Row(
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 12)),
+          const SizedBox(width: 5),
+          Text(label,
+              style: const TextStyle(color: Color(0xFF6A6A8A), fontSize: 12)),
+        ],
+      ),
     );
   }
 
+  // ── Input Card ─────────────────────────────────────────────────────────────
+  Widget _buildInputCard(BuildContext context, RestaurantProvider provider) {
+    return Container(
+      margin: const EdgeInsets.only(top: 24),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF12121E),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF1E1E32)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: UrlInputForm(
+        isLoading: provider.isLoading,
+        onSubmit: (url, name) => provider.scrapeRestaurant(url, name),
+      ),
+    );
+  }
+
+  // ── Success Card ───────────────────────────────────────────────────────────
   Widget _buildSuccessCard(BuildContext context, RestaurantProvider provider) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
+        color: const Color(0xFF0D1F17),
         borderRadius: BorderRadius.circular(16),
-        border:
-            Border.all(color: const Color(0xFF4ECDC4).withValues(alpha: 0.4)),
+        border: Border.all(
+            color: const Color(0xFF4ECDC4).withValues(alpha: 0.35), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4ECDC4).withValues(alpha: 0.06),
+            blurRadius: 16,
+            spreadRadius: 1,
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -180,53 +251,78 @@ class HomeScreen extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF4ECDC4).withValues(alpha: 0.2),
+                  color: const Color(0xFF4ECDC4).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.check_circle,
-                    color: Color(0xFF4ECDC4), size: 20),
+                child: const Icon(Icons.check_circle_rounded,
+                    color: Color(0xFF4ECDC4), size: 18),
               ),
               const SizedBox(width: 10),
               Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      provider.restaurant?.name ?? 'Restaurant',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      '${provider.menuItems.length} menu items ready',
+                      style: const TextStyle(
+                          color: Color(0xFF4ECDC4), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4ECDC4).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 child: Text(
-                  provider.restaurant?.name ?? 'Restaurant',
+                  '${provider.menuItems.length}',
                   style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16),
+                    color: Color(0xFF4ECDC4),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            '${provider.menuItems.length} menu items scraped successfully',
-            style: const TextStyle(color: Colors.white54, fontSize: 13),
-          ),
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
+            height: 48,
             child: ElevatedButton(
               onPressed: () => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const MenuPreviewScreen())),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF6B35),
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                elevation: 0,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.preview, color: Colors.white),
+                  Icon(Icons.auto_awesome_rounded,
+                      color: Colors.white, size: 18),
                   SizedBox(width: 8),
-                  Text('Preview Menu & Configure',
+                  Text('Preview & Configure Campaign',
                       style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          fontSize: 15)),
+                          fontSize: 14)),
                 ],
               ),
             ),
@@ -236,124 +332,233 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  // ── How It Works ───────────────────────────────────────────────────────────
   Widget _buildHowItWorks() {
     final steps = [
       {
         'icon': '🌐',
         'title': 'Paste URL',
-        'desc': 'Enter any restaurant website URL'
+        'desc': 'Enter any restaurant website URL',
+        'color': const Color(0xFFFF6B35),
       },
       {
         'icon': '🤖',
         'title': 'AI Scrapes',
-        'desc': 'We extract the full menu automatically'
+        'desc': 'Extract the full menu automatically',
+        'color': const Color(0xFF4ECDC4),
       },
       {
         'icon': '🎨',
         'title': 'Configure',
-        'desc': 'Choose platform, theme & campaign type'
+        'desc': 'Choose format, theme & campaign type',
+        'color': const Color(0xFFE040FB),
       },
       {
         'icon': '📲',
         'title': 'Download',
-        'desc': 'Get branded social media creatives instantly'
+        'desc': 'Get branded social media creatives',
+        'color': const Color(0xFFFFD700),
       },
     ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('How it works',
-            style: TextStyle(
+        const Row(
+          children: [
+            Text(
+              'How it works',
+              style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
-                fontSize: 18)),
-        const SizedBox(height: 14),
-        ...steps.asMap().entries.map((e) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1A2E),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white12),
-                    ),
-                    child: Center(
-                        child: Text(e.value['icon']!,
-                            style: const TextStyle(fontSize: 20))),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(e.value['title']!,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14)),
-                        Text(e.value['desc']!,
-                            style: const TextStyle(
-                                color: Colors.white38, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF6B35).withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text('${e.key + 1}',
-                          style: const TextStyle(
-                              color: Color(0xFFFF6B35),
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
+                fontSize: 17,
               ),
-            )),
+            ),
+            SizedBox(width: 8),
+            Expanded(
+              child: Divider(color: Color(0xFF1E1E32), height: 1),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        ...steps.asMap().entries.map((e) {
+          final step = e.value;
+          final color = step['color'] as Color;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: color.withValues(alpha: 0.2)),
+                  ),
+                  child: Center(
+                    child: Text(step['icon'] as String,
+                        style: const TextStyle(fontSize: 20)),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        step['title'] as String,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        step['desc'] as String,
+                        style: const TextStyle(
+                            color: Color(0xFF5A5A7A), fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${e.key + 1}',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
       ],
     );
   }
 
+  // ── Feature Pills ──────────────────────────────────────────────────────────
+  Widget _buildFeaturesRow() {
+    final features = [
+      {'icon': Icons.bolt_rounded, 'label': 'Instant', 'color': const Color(0xFFFFD700)},
+      {'icon': Icons.palette_rounded, 'label': 'AI Design', 'color': const Color(0xFF4ECDC4)},
+      {'icon': Icons.download_rounded, 'label': 'Export Ready', 'color': const Color(0xFFE040FB)},
+    ];
+
+    return Row(
+      children: features.map((f) {
+        final color = f['color'] as Color;
+        return Expanded(
+          child: Container(
+            margin: features.indexOf(f) < features.length - 1
+                ? const EdgeInsets.only(right: 10)
+                : EdgeInsets.zero,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withValues(alpha: 0.15)),
+            ),
+            child: Column(
+              children: [
+                Icon(f['icon'] as IconData, color: color, size: 20),
+                const SizedBox(height: 6),
+                Text(
+                  f['label'] as String,
+                  style: TextStyle(
+                    color: color.withValues(alpha: 0.9),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // ── Error View ─────────────────────────────────────────────────────────────
   Widget _buildErrorView(BuildContext context, RestaurantProvider provider) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text('❌', style: TextStyle(fontSize: 64)),
-            const SizedBox(height: 16),
-            const Text('Scraping Failed',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold)),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1F0A0A),
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: const Color(0xFFFF4757).withValues(alpha: 0.4)),
+              ),
+              child: const Icon(Icons.link_off_rounded,
+                  color: Color(0xFFFF4757), size: 40),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Scraping Failed',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 8),
-            Text(
-              provider.error ?? 'An unknown error occurred',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white60, fontSize: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A0E0E),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: const Color(0xFFFF4757).withValues(alpha: 0.2)),
+              ),
+              child: Text(
+                provider.error ?? 'An unknown error occurred',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFFAA7070), fontSize: 13),
+              ),
             ),
             const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => provider.clear(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6B35),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: () => provider.clear(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6B35),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                    SizedBox(width: 8),
+                    Text('Try Again',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold)),
+                  ],
+                ),
               ),
-              child: const Text('Try Again',
-                  style: TextStyle(color: Colors.white, fontSize: 16)),
             ),
           ],
         ),

@@ -134,7 +134,7 @@ class AIProcessorService {
       dish_index: i,
       dish_id: dish.id,
       headline: `🔥 ${dish.name}`,
-      caption: `Savor the flavors of our ${dish.name}${dish.price ? ` at just ₹${dish.price}` : ''}! Made with love and the finest ingredients.`,
+      caption: `Savor the flavors of our ${dish.name}${dish.price ? ` at just ${dish.price}` : ''}! Made with love and the finest ingredients.`,
       cta: '📍 Order Now | Visit Today'
     });
 
@@ -187,11 +187,14 @@ Return ONLY valid JSON array, no extra text.`;
 
   async generateContentPlan(menuItems, campaignType = 'daily') {
     const postTypes = {
-      daily: ['Top 5 Bestsellers', "Today's Chef Special", 'Value Pick', 'New Arrival', 'Customer Favourite'],
-      new_arrivals: ['New Arrival Spotlight', 'Fresh From The Kitchen', 'Just Added', 'First Taste'],
-      weekend: ['Weekend Feast', 'Family Special', 'Group Combo', 'Weekend Bestseller'],
-      festive: ['Festive Special', 'Celebration Dish', 'Traditional Favourite', 'Party Platter'],
-      combo: ['Best Value Combo', 'Family Deal', 'Lunch Special', 'Dinner Package']
+      daily:        ['Top 5 Bestsellers', "Today's Chef Special", 'Value Pick', 'Customer Favourite'],
+      daily_special: ['Top 5 Bestsellers', "Today's Chef Special", 'Value Pick', 'Customer Favourite'],
+      new_arrivals:  ['New Arrival Spotlight', 'Fresh From The Kitchen', 'Just Added', 'First Taste'],
+      new_arrival:   ['New Arrival Spotlight', 'Fresh From The Kitchen', 'Just Added', 'First Taste'],
+      festive:       ['Festive Special', 'Celebration Dish', 'Traditional Favourite', 'Party Platter'],
+      festive_offer: ['Festive Special', 'Celebration Dish', 'Traditional Favourite', 'Party Platter'],
+      combo:         ['Best Value Combo', 'Family Deal', 'Lunch Special', 'Dinner Package'],
+      combo_offer:   ['Best Value Combo', 'Family Deal', 'Lunch Special', 'Dinner Package'],
     };
 
     const types = postTypes[campaignType] || postTypes.daily;

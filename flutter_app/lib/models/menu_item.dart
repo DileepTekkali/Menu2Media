@@ -4,6 +4,7 @@ class MenuItem {
   final String name;
   final String? category;
   final double? price;
+  final String? currency;
   final String? description;
   final String? imageUrl;
   final List<String> tags;
@@ -16,6 +17,7 @@ class MenuItem {
     required this.name,
     this.category,
     this.price,
+    this.currency,
     this.description,
     this.imageUrl,
     this.tags = const [],
@@ -24,12 +26,23 @@ class MenuItem {
   }) : createdAt = createdAt ?? DateTime.now();
 
   factory MenuItem.fromJson(Map<String, dynamic> json) {
+    final priceValue = json['price'];
+    double? parsedPrice;
+    if (priceValue != null) {
+      if (priceValue is num) {
+        parsedPrice = priceValue.toDouble();
+      } else if (priceValue is String && priceValue.isNotEmpty) {
+        final cleaned = priceValue.replaceAll(RegExp(r'[^\d.]'), '');
+        parsedPrice = double.tryParse(cleaned);
+      }
+    }
     return MenuItem(
       id: json['id'] ?? '',
       restaurantId: json['restaurant_id'] ?? '',
       name: json['name'] ?? '',
       category: json['category'],
-      price: json['price'] != null ? (json['price'] as num).toDouble() : null,
+      price: parsedPrice,
+      currency: json['currency'] ?? json['price_currency'],
       description: json['description'],
       imageUrl: json['image_url'],
       tags: json['tags'] != null ? List<String>.from(json['tags']) : [],
@@ -47,6 +60,7 @@ class MenuItem {
       'name': name,
       'category': category,
       'price': price,
+      'currency': currency,
       'description': description,
       'image_url': imageUrl,
       'tags': tags,
@@ -60,6 +74,7 @@ class MenuItem {
     String? name,
     String? category,
     double? price,
+    String? currency,
     String? description,
     String? imageUrl,
     List<String>? tags,
@@ -71,11 +86,18 @@ class MenuItem {
       name: name ?? this.name,
       category: category ?? this.category,
       price: price ?? this.price,
+      currency: currency ?? this.currency,
       description: description ?? this.description,
       imageUrl: imageUrl ?? this.imageUrl,
       tags: tags ?? this.tags,
       isBestseller: isBestseller ?? this.isBestseller,
       createdAt: createdAt,
     );
+  }
+
+  String get formattedPrice {
+    if (price == null || price == 0) return '';
+    final sym = currency == 'INR' ? '₹' : (currency == 'USD' ? '\$' : (currency == 'EUR' ? '€' : (currency == 'GBP' ? '£' : (currency ?? '\$'))));
+    return '$sym${price!.toStringAsFixed(0)}';
   }
 }

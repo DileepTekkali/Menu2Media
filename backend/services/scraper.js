@@ -239,8 +239,16 @@ parseCssSelectors($, baseUrl) {
       const $el = $(el);
       const text = $el.text();
       
-      // Pattern: Dish Name .... $12.95 or Dish Name $12.95
+      // Pattern: Dish Name .... $12.95 or Dish Name $12.95 or ₹250
       const priceMatch = text.match(/(?:(?:\$|₹|Rs\.?|INR)\s*)?(\d{1,3}(?:,\d{3})*\.\d{2})(?:\s|$)/i);
+      let detectedCurrency = '';
+      if (priceMatch && priceMatch[0]) {
+        if (priceMatch[0].includes('₹') || priceMatch[0].includes('Rs') || priceMatch[0].includes('INR')) {
+          detectedCurrency = 'INR';
+        } else if (priceMatch[0].includes('$') && !priceMatch[0].includes('A$') && !priceMatch[0].includes('S$')) {
+          detectedCurrency = 'USD';
+        }
+      }
       
       if (priceMatch) {
         // If there's a <strong> inside, it's likely the name
@@ -258,6 +266,7 @@ parseCssSelectors($, baseUrl) {
           items.push({
             name: this.cleanText(name),
             price: parseFloat(priceMatch[1].replace(/,/g, '')),
+            currency: detectedCurrency,
             description: '',
             image_url: '',
             category: 'Menu'

@@ -1,7 +1,9 @@
 const { chromium } = require('playwright-core');
 const Groq = require('groq-sdk');
 
-const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
+const groqApiKey = process.env.GROQ_API_KEY;
+const hasValidGroq = groqApiKey && !groqApiKey.includes('xxx') && !groqApiKey.includes('your_groq');
+const groq = hasValidGroq ? new Groq({ apiKey: groqApiKey }) : null;
 
 class IntelligentScraper {
   constructor() {
@@ -72,10 +74,10 @@ class IntelligentScraper {
 
       const page = await browser.newPage();
       
-      // Block unnecessary resources
+      // Block unnecessary resources (but keep some images for logo extraction)
       await page.route('**/*', route => {
         const type = route.request().resourceType();
-        if (['image', 'font', 'media', 'stylesheet', 'websocket'].includes(type)) {
+        if (['media', 'font', 'websocket'].includes(type)) {
           route.abort();
         } else {
           route.continue();
@@ -83,26 +85,63 @@ class IntelligentScraper {
       });
 
       console.log(`Navigating to ${url}...`);
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
-      await page.waitForTimeout(2000);
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(3000);
 
+      // Extract Restaurant Branded Info
+      const restaurantInfo = await this.extractRestaurantBranding(page);
+      console.log('Extracted Branding:', restaurantInfo);
+
+      // Try selecting location first to get actual prices
+      await this.selectLocation(page);
+
+      // Click menu button if needed
       await this.clickMenuButton(page);
 
+      // Scroll to trigger lazy loading
+      await this.scrollToLoadContent(page);
+
+      // Wait for dynamic prices to load
+      await page.waitForTimeout(2000);
+
+      // Try navigating through categories
+      let categoryItems = [];
+      console.log('Attempting to navigate through menu categories...');
+      try {
+        categoryItems = await this.navigateAndScrapeCategories(page);
+        console.log(`Found ${categoryItems.length} items from category navigation`);
+      } catch (e) {
+        console.log('Category navigation error:', e.message);
+      }
+
       const menuItems = await this.extractAllMenuItems(page);
-      console.log(`Extracted ${menuItems.length} menu items`);
+      
+      // Merge and De-duplicate
+      const allExtracted = [...menuItems, ...categoryItems];
+      const uniqueItems = [];
+      const seenNames = new Set();
+      
+      for (const item of allExtracted) {
+        const key = `${item.name.toLowerCase()}|${item.category?.toLowerCase() || 'menu'}`;
+        if (!seenNames.has(key)) {
+          seenNames.add(key);
+          uniqueItems.push(item);
+        }
+      }
+      console.log(`Extracted total: ${allExtracted.length}, Unique: ${uniqueItems.length}`);
 
       // Filter using Groq AI to remove non-food items
-      let filteredItems = menuItems;
-      if (menuItems.length > 0 && groq) {
+      let filteredItems = uniqueItems;
+      if (uniqueItems.length > 0 && groq) {
         try {
-          filteredItems = await this.filterWithGroq(menuItems);
+          filteredItems = await this.filterWithGroq(uniqueItems);
           console.log(`Groq filtered to ${filteredItems.length} food items`);
         } catch (e) {
           console.log('Groq filter failed, using heuristic filter:', e.message);
-          filteredItems = this.heuristicFilter(menuItems);
+          filteredItems = this.heuristicFilter(uniqueItems);
         }
       } else {
-        filteredItems = this.heuristicFilter(menuItems);
+        filteredItems = this.heuristicFilter(uniqueItems);
       }
 
       await browser.close();
@@ -112,7 +151,9 @@ class IntelligentScraper {
         success: filteredItems.length > 0,
         items: filteredItems.slice(0, 100),
         total: filteredItems.length,
-        method: 'intelligent_heuristic'
+        method: 'intelligent_heuristic',
+        restaurantName: restaurantInfo.name,
+        logoUrl: restaurantInfo.logoUrl
       };
 
     } catch (error) {
@@ -121,6 +162,171 @@ class IntelligentScraper {
     } finally {
       if (browser) await browser.close().catch(() => {});
     }
+  }
+
+  async extractRestaurantBranding(page) {
+    return await page.evaluate(() => {
+      // 1. Extract Name
+      let name = '';
+      
+      // Try meta tags first
+      const ogTitle = document.querySelector('meta[property="og:site_name"]')?.content || 
+                    document.querySelector('meta[property="og:title"]')?.content;
+      
+      if (ogTitle) name = ogTitle.split('|')[0].split('-')[0].trim();
+      
+      if (!name || name.length < 3) {
+        // Try h1 with logo or brand class
+        const h1 = document.querySelector('h1');
+        if (h1 && h1.innerText.length < 50) name = h1.innerText.trim();
+      }
+      
+      if (!name || name.length < 3) {
+        name = document.title.split('|')[0].split('-')[0].trim();
+      }
+
+      // 2. Extract Logo
+      let logoUrl = '';
+      const logoSelectors = [
+        'img[src*="logo" i]',
+        'img[class*="logo" i]',
+        'img[id*="logo" i]',
+        'a[class*="logo" i] img',
+        '.navbar-brand img',
+        '.header-logo img'
+      ];
+
+      for (const selector of logoSelectors) {
+        const img = document.querySelector(selector);
+        if (img && img.src && img.src.startsWith('http')) {
+          logoUrl = img.src;
+          break;
+        }
+      }
+
+      if (!logoUrl) {
+        // Try og:image
+        logoUrl = document.querySelector('meta[property="og:image"]')?.content || '';
+      }
+
+      if (!logoUrl) {
+        // Try shortcut icon
+        logoUrl = document.querySelector('link[rel*="icon"]')?.href || '';
+      }
+
+      return { name, logoUrl };
+    });
+  }
+
+  async selectLocation(page) {
+    const locationSelectors = [
+      '[class*="location"]',
+      '[id*="location"]',
+      'select[name*="location"]',
+      'select[id*="city"]',
+      'select[class*="city"]',
+      '[data-location]',
+      '[class*="branch"]',
+      '[id*="branch"]'
+    ];
+    
+    for (const selector of locationSelectors) {
+      try {
+        const select = await page.$(selector);
+        if (select) {
+          const tagName = await select.evaluate(el => el.tagName);
+          if (tagName === 'SELECT') {
+            const options = await select.$$('option');
+            if (options.length > 1) {
+              // Select a valid location (skip "Select location" placeholder)
+              const option = await page.evaluateHandle(sel => {
+                const opts = sel.querySelectorAll('option');
+                for (const opt of opts) {
+                  if (opt.value && opt.value.length > 0 && !opt.textContent.toLowerCase().includes('select')) {
+                    return opt.value;
+                  }
+                }
+                return null;
+              }, select);
+              
+              if (option) {
+                await select.selectOption(option);
+                await page.waitForTimeout(2000);
+                console.log('Location selected to get actual prices');
+                return;
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    }
+    
+    // Try clicking location button and selecting from dropdown
+    try {
+      const locationButtons = await page.$$('button:has-text("Location"), a:has-text("Location")');
+      for (const btn of locationButtons.slice(0, 2)) {
+        await btn.click();
+        await page.waitForTimeout(1000);
+        
+        const dropdownOptions = await page.$$('[class*="option"], [class*="item"], ul li');
+        for (const opt of dropdownOptions.slice(0, 10)) {
+          const text = await opt.innerText().catch(() => '');
+          if (text && text.length > 2 && text.length < 50) {
+            await opt.click();
+            await page.waitForTimeout(1500);
+            console.log('Selected location:', text.trim());
+            return;
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  async scrollToLoadContent(page) {
+    try {
+      await page.evaluate(() => {
+        window.scrollTo(0, 0);
+      });
+      
+      for (let i = 0; i < 5; i++) {
+        await page.evaluate(() => {
+          window.scrollBy(0, window.innerHeight * 0.5);
+        });
+        await page.waitForTimeout(500);
+      }
+      
+      await page.evaluate(() => {
+        window.scrollTo(0, 0);
+      });
+    } catch (e) {}
+  }
+
+  async clickItemsToRevealPrices(page) {
+    try {
+      const itemSelectors = [
+        '[class*="menu-item"]',
+        '[class*="product-item"]',
+        '[class*="dish-item"]',
+        '[class*="food-item"] li',
+        'ul li[class*="item"]'
+      ];
+      
+      for (const selector of itemSelectors) {
+        const items = await page.$$(selector);
+        
+        // Parallelize clicks for performance (max 5 at a time)
+        const batch = items.slice(0, 10);
+        await Promise.all(batch.map(async (item) => {
+          try {
+            await item.click({ delay: 50 });
+            // Wait briefly for UI update
+            await new Promise(r => setTimeout(r, 600));
+            // Close any modal that might have opened
+            await page.keyboard.press('Escape').catch(() => {});
+          } catch (e) {}
+        }));
+      }
+    } catch (e) {}
   }
 
   async clickMenuButton(page) {
@@ -155,6 +361,9 @@ class IntelligentScraper {
   async extractAllMenuItems(page) {
     const noisePatterns = this.noisePatterns.map(np => np.pattern.source);
     const locationNames = this.locationNames;
+    
+    // Try clicking some items to reveal prices in modals
+    await this.clickItemsToRevealPrices(page);
     
     return await page.evaluate(({ noisePatterns, locationNames }) => {
       const items = [];
@@ -240,9 +449,27 @@ class IntelligentScraper {
             
             // Try to get price
             let price = 0;
-            const priceMatch = el.innerText.match(/[\$₹€£¥]\s*(\d+(?:[.,]\d+)?)/);
-            if (priceMatch) {
-              price = parseFloat(priceMatch[1].replace(/,/g, ''));
+            
+            // Try data attributes first
+            const dataPrice = el.getAttribute('data-price') || el.getAttribute('data-price-amount');
+            if (dataPrice) {
+              price = parseFloat(dataPrice.replace(/,/g, ''));
+            }
+            
+            // Try regular text price patterns
+            if (!price) {
+              const priceMatch = el.innerText.match(/[\$₹€£¥]\s*(\d+(?:[.,]\d+)?)/);
+              if (priceMatch) {
+                price = parseFloat(priceMatch[1].replace(/,/g, ''));
+              }
+            }
+            
+            // Try plain number (some sites show just digits)
+            if (!price) {
+              const plainMatch = el.innerText.match(/(?:Rs\.?|INR|USD|EUR|GBP)?\s*(\d{2,4}(?:[.,]\d{2})?)\s*(?:\/|per)/i);
+              if (plainMatch) {
+                price = parseFloat(plainMatch[1].replace(/,/g, ''));
+              }
             }
             
             items.push({
@@ -279,10 +506,28 @@ class IntelligentScraper {
           const parent = heading.closest('section, article, div, li') || heading.parentElement;
           const parentText = (parent && parent.innerText) ? parent.innerText : '';
           
-          // Extract price
-          const priceMatch = parentText.match(/[\$₹€£¥]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/);
-          if (priceMatch) {
-            price = parseFloat(priceMatch[1].replace(/,/g, ''));
+          // Try data attributes first
+          const dataPrice = parent.getAttribute('data-price') || 
+                          parent.querySelector('[data-price]')?.getAttribute('data-price') ||
+                          parent.querySelector('[data-price-amount]')?.getAttribute('data-price-amount');
+          if (dataPrice) {
+            price = parseFloat(dataPrice.replace(/,/g, ''));
+          }
+          
+          // Extract price from text
+          if (!price) {
+            const priceMatch = parentText.match(/[\$₹€£¥]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/);
+            if (priceMatch) {
+              price = parseFloat(priceMatch[1].replace(/,/g, ''));
+            }
+          }
+          
+          // Try Indian rupee格式
+          if (!price) {
+            const inrMatch = parentText.match(/(?:Rs\.?|INR)\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/i);
+            if (inrMatch) {
+              price = parseFloat(inrMatch[1].replace(/,/g, ''));
+            }
           }
           
           // Try to get description from next sibling
@@ -407,7 +652,8 @@ If you cannot determine the food items, return ALL items in the "refined" array.
           }],
           model: 'llama-3.3-70b-versatile',
           temperature: 0.1,
-          max_tokens: 3000
+          max_tokens: 3000,
+          response_format: { type: 'json_object' }
         }),
         new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000))
       ]);
@@ -473,7 +719,10 @@ If you cannot determine the food items, return ALL items in the "refined" array.
       /^delivery$/i, /^collection$/i, /^group feast$/i, /^children$/i, /^vegan$/i,
       /select a menu/i, /our menus/i, /café support/i, /store support/i,
       /^battersea|^carnaby|^covent|^kensington|^king|^shoreditch/i,
-      /^sorry.*blocked/i, /^you.*unable.*access/i, /^why.*blocked/i, /^what.*do.*resolve/i
+      /^sorry.*blocked/i, /^you.*unable.*access/i, /^why.*blocked/i, /^what.*do.*resolve/i,
+      /gift cards?/i, /franchise/i, /careers?/i, /privacy policy/i, /terms.*conditions/i,
+      /accessibility/i, /press releases?/i, /in the news/i, /contact us/i, /about us/i,
+      /corporate responsibility/i, /disclaimer/i, /certification/i
     ];
 
     const foodIndicators = [
@@ -517,6 +766,108 @@ If you cannot determine the food items, return ALL items in the "refined" array.
       // Default: keep it (will be filtered by Groq on next run)
       return true;
     });
+  }
+
+  async navigateAndScrapeCategories(page) {
+    const allItems = [];
+    
+    // More specific selectors for menu tabs/categories
+    const categorySelectors = [
+      '.menu-category-tabs a',
+      '.category-tabs a',
+      '.food-category a',
+      '[data-category]',
+      '.menu-nav a',
+      '.category-menu a',
+      'ul.menu li a',
+      '.navbar-menu a'
+    ];
+    
+    let categoryLinks = [];
+    
+    // Try each selector
+    for (const selector of categorySelectors) {
+      try {
+        const elements = await page.$$(selector);
+        for (const el of elements) {
+          const text = await el.innerText();
+          if (text && text.trim().length > 2 && text.trim().length < 40) {
+            categoryLinks.push({ text: text.trim(), element: el });
+          }
+        }
+        if (categoryLinks.length > 0) break;
+      } catch (e) {}
+    }
+    
+    // If no categories found, try clicking common menu items/tabs
+    if (categoryLinks.length === 0) {
+      try {
+        const tabElements = await page.$$('[class*="tab"], [class*="menu-item"]');
+        for (const el of tabElements.slice(0, 8)) {
+          const text = await el.innerText();
+          if (text && text.trim().length > 2 && text.trim().length < 30) {
+            categoryLinks.push({ text: text.trim(), element: el });
+          }
+        }
+      } catch (e) {}
+    }
+    
+    // Filter to likely food categories
+    const menuKeywords = ['pizza', 'burger', 'chicken', 'biryani', 'rice', 'starter', 'dessert', 'beverage', 'drink', 'combo', 'special', 'veg', 'paneer', 'mughlai', 'tandoor', 'wrap', 'sandwich', 'salad', 'soup', 'pasta', 'noodle', 'thali', 'curry', 'tikka', 'kebab'];
+    
+    const likelyCategories = categoryLinks.filter(c => {
+      const lower = c.text.toLowerCase();
+      return menuKeywords.some(k => lower.includes(k)) && 
+             !lower.includes('login') && 
+             !lower.includes('sign') && 
+             !lower.includes('cart') &&
+             !lower.includes('order') &&
+             !lower.includes('contact') &&
+             !lower.includes('about');
+    }).slice(0, 6); // Max 6 categories
+    
+    console.log(`Found ${likelyCategories.length} menu categories:`, likelyCategories.map(c => c.text).join(', '));
+    
+    // Navigate each category
+    for (const cat of likelyCategories) {
+      try {
+        await cat.element.click();
+        await page.waitForTimeout(2000);
+        
+        // Get page content after click
+        const content = await page.evaluate(() => {
+          const texts = [];
+          const els = document.querySelectorAll('[class*="item"] p, [class*="item"] h3, [class*="item"] h4, .menu-item, .product-item');
+          els.forEach(el => {
+            const t = el.innerText?.trim();
+            if (t && t.length > 5 && t.length < 150) texts.push(t);
+          });
+          return texts;
+        });
+        
+        // Parse content for items with prices
+        for (const text of content) {
+          const priceMatch = text.match(/[\$₹€£¥]\s*(\d+(?:[.,]\d+)?)/);
+          if (priceMatch) {
+            const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+            const name = text.split(priceMatch[0])[0].trim().split('\n')[0];
+            if (name.length > 3) {
+              allItems.push({
+                name: name.substring(0, 60),
+                price,
+                description: '',
+                category: cat.text
+              });
+            }
+          }
+        }
+        
+      } catch (e) {
+        console.log(`Error category ${cat.text}:`, e.message);
+      }
+    }
+    
+    return allItems;
   }
 
   cleanText(text) {

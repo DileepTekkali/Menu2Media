@@ -15,34 +15,113 @@ class CampaignConfigScreen extends StatefulWidget {
 
 class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
   String _campaignType = 'daily';
-  final Set<String> _selectedSizes = {'square'};
+  String _festivalType = 'diwali'; // Default festival
+  final Set<String> _selectedSizes = {'1:1'};
   final Set<String> _selectedDishIds = {};
   List<MenuItem> _menuItems = [];
   bool _loadingMenu = true;
 
   final _campaignTypes = {
     'daily': {'label': 'Daily Specials', 'icon': '☀️'},
-    'new_arrivals': {'label': 'New Arrivals', 'icon': '🆕'},
-    'weekend': {'label': 'Weekend Deals', 'icon': '🎉'},
+    'new_arrival': {'label': 'New Arrivals', 'icon': '🆕'},
     'festive': {'label': 'Festive Specials', 'icon': '✨'},
     'combo': {'label': 'Combo Offers', 'icon': '🤝'},
   };
 
+  final List<Map<String, String>> _festivals = [
+    {
+      'id': 'diwali',
+      'label': 'Diwali',
+      'theme':
+          'warm golden glow, diyas, marigold flowers, traditional Indian decor'
+    },
+    {
+      'id': 'christmas',
+      'label': 'Christmas',
+      'theme': 'pine branches, fairy lights, red and green accents, cozy winter'
+    },
+    {
+      'id': 'eid',
+      'label': 'Eid',
+      'theme':
+          'golden lanterns, crescent moon motifs, rich emerald and gold atmosphere'
+    },
+    {
+      'id': 'sankranti',
+      'label': 'Sankranti',
+      'theme':
+          'sugarcane stalks, harvest warmth, earthen vessels, bright sunlight'
+    },
+    {
+      'id': 'ugadi',
+      'label': 'Ugadi',
+      'theme': 'mango leaf garlands, brass bells, temple decor, vibrant spring'
+    },
+    {
+      'id': 'ramzan',
+      'label': 'Ramzan',
+      'theme': 'iftar table, golden hour glow, lanterns, deep night aesthetic'
+    },
+    {
+      'id': 'holi',
+      'label': 'Holi',
+      'theme':
+          'colored powders, rainbow hues, joyful celebration, vibrant atmosphere'
+    },
+    {
+      'id': 'pongal',
+      'label': 'Pongal',
+      'theme':
+          'clay pots, rice stalks, harvest decorations, rustic village morning'
+    },
+    {
+      'id': 'onam',
+      'label': 'Onam',
+      'theme':
+          'pookalam flowers, traditional Kerala decor, festive sadya setting'
+    },
+    {
+      'id': 'navratri',
+      'label': 'Navratri',
+      'theme': 'garba,dandiya, colorful drapes, traditional dance atmosphere'
+    },
+    {
+      'id': 'dussehra',
+      'label': 'Dussehra',
+      'theme': 'ramayan decor, traditional elements, festive Vijayadashami'
+    },
+    {
+      'id': 'ganesh_chaturthi',
+      'label': 'Ganesh Chaturthi',
+      'theme': 'lord ganesh idol, modak, flower garlands, festive puja'
+    },
+    {
+      'id': 'independence_day',
+      'label': 'Independence Day',
+      'theme': 'tricolor decorations, national flag colors, patriotic bunting'
+    },
+    {
+      'id': 'republic_day',
+      'label': 'Republic Day',
+      'theme': 'parade elements, national flag, patriotic decorations'
+    },
+  ];
+
   final _sizes = {
-    'square': {
-      'label': 'Square',
+    '1:1': {
+      'label': 'Square (1:1)',
       'icon': Icons.crop_square,
-      'desc': '1080×1080'
+      'desc': 'Feeds & Posts'
     },
-    'story': {
-      'label': 'Story',
+    '4:5': {
+      'label': 'Portrait (4:5)',
       'icon': Icons.crop_portrait,
-      'desc': '1080×1920'
+      'desc': 'Stories & Reels'
     },
-    'landscape': {
-      'label': 'Landscape',
+    '16:9': {
+      'label': 'Landscape (16:9)',
       'icon': Icons.crop_landscape,
-      'desc': '1920×1080'
+      'desc': 'Banners & Ads'
     },
   };
 
@@ -99,6 +178,7 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
               'name': item.name,
               'description': item.description,
               'price': item.price,
+              'currency': item.currency,
               'category': item.category,
               'image_url': item.imageUrl,
             })
@@ -109,6 +189,7 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
       campaignType: _campaignType,
       dishes: selectedDishes,
       formats: _selectedSizes.toList(),
+      festivalType: _campaignType == 'festive' ? _festivalType : null,
     );
 
     if (campaignProvider.error == null && mounted) {
@@ -214,32 +295,71 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
   }
 
   Widget _buildCampaignTypeSelector() {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: _campaignTypes.entries.map((e) {
-        final selected = _campaignType == e.key;
-        return GestureDetector(
-          onTap: () => setState(() => _campaignType = e.key),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: _campaignTypes.entries.map((e) {
+            final selected = _campaignType == e.key;
+            return GestureDetector(
+              onTap: () => setState(() => _campaignType = e.key),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? const Color(0xFFFF6B35)
+                      : const Color(0xFF1A1A2E),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: selected ? const Color(0xFFFF6B35) : Colors.white24,
+                  ),
+                ),
+                child: Text('${e.value['icon']} ${e.value['label']}',
+                    style: TextStyle(
+                        color: selected ? Colors.white : Colors.white60,
+                        fontWeight:
+                            selected ? FontWeight.bold : FontWeight.normal)),
+              ),
+            );
+          }).toList(),
+        ),
+        if (_campaignType == 'festive') ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
-              color:
-                  selected ? const Color(0xFFFF6B35) : const Color(0xFF1A1A2E),
+              color: const Color(0xFF1A1A2E),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: selected ? const Color(0xFFFF6B35) : Colors.white24,
+              border: Border.all(color: Colors.white24),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _festivalType,
+                isExpanded: true,
+                dropdownColor: const Color(0xFF1A1A2E),
+                icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _festivalType = newValue!;
+                  });
+                },
+                items: _festivals.map<DropdownMenuItem<String>>(
+                    (Map<String, String> festival) {
+                  return DropdownMenuItem<String>(
+                    value: festival['id'],
+                    child: Text(festival['label']!),
+                  );
+                }).toList(),
               ),
             ),
-            child: Text('${e.value['icon']} ${e.value['label']}',
-                style: TextStyle(
-                    color: selected ? Colors.white : Colors.white60,
-                    fontWeight:
-                        selected ? FontWeight.bold : FontWeight.normal)),
           ),
-        );
-      }).toList(),
+        ]
+      ],
     );
   }
 
@@ -407,7 +527,7 @@ class _CampaignConfigScreenState extends State<CampaignConfigScreen> {
             ),
             if ((item.price ?? 0) > 0)
               Text(
-                '\$${(item.price ?? 0).toStringAsFixed(2)}',
+                item.formattedPrice,
                 style: const TextStyle(
                     color: Color(0xFF4ECDC4), fontWeight: FontWeight.w600),
               ),

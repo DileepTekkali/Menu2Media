@@ -780,19 +780,18 @@ class CreativeBuilderService {
       }
 
       if (logoBuf) {
-        let logoTop, logoLeft, logoSize;
+        // Standard fixed logo size across all formats: 60x60
+        const logoSize = 60;
+        let logoTop, logoLeft;
         if (format === 'story') {
-           logoSize = 100;
-           logoTop = 45;
+           logoTop = 50;
            logoLeft = Math.floor(width / 2) - Math.floor(logoSize / 2);
         } else if (format === 'landscape') {
-           logoSize = 50;
-           logoTop = 35; 
-           logoLeft = 34; // Matches px in landscape
+           logoTop = 40;
+           logoLeft = 40;
         } else { // square
-           logoSize = 65;
-           logoTop = 50;
-           logoLeft = 38; // Matches px in square
+           logoTop = 55;
+           logoLeft = 40;
         }
         const resizedLogo = await sharp(logoBuf)
           .resize(logoSize, logoSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })

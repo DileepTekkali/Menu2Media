@@ -13,7 +13,12 @@ const validateUuid = (uuid) => {
 };
 
 const validateCampaignType = (type) => {
-  return ['daily', 'new_arrivals', 'weekend', 'festive', 'combo'].includes(type);
+  const normalized = type.replace(/_(offer|special|specials)$/, '').toLowerCase();
+  return ['daily', 'new_arrivals', 'new_arrival', 'festive', 'combo'].includes(normalized);
+};
+
+const removeWeekendFromValidCampaignTypes = () => {
+  return ['daily', 'new_arrivals', 'festive', 'combo'];
 };
 
 const validatePlatform = (platform) => {
@@ -21,7 +26,7 @@ const validatePlatform = (platform) => {
 };
 
 const validateFormat = (format) => {
-  const validFormats = ['square', 'story', 'landscape'];
+  const validFormats = ['1:1', '4:5', '16:9', 'square', 'story', 'landscape'];
   const normalized = format.replace(/^(instagram_|facebook_|whatsapp_)/, '');
   return validFormats.includes(normalized);
 };

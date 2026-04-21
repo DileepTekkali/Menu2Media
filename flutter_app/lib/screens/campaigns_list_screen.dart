@@ -109,11 +109,14 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
     };
 
     final typeEmojis = {
-      'daily': '☀️',
-      'new_arrivals': '🆕',
-      'weekend': '🎉',
-      'festive': '✨',
-      'combo': '🤝',
+      'daily':         '☀️',
+      'daily_special': '☀️',
+      'new_arrivals':  '🆕',
+      'new_arrival':   '🆕',
+      'festive':       '✨',
+      'festive_offer': '✨',
+      'combo':         '🤝',
+      'combo_offer':   '🤝',
     };
 
     return GestureDetector(

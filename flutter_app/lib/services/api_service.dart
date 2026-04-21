@@ -105,17 +105,21 @@ class ApiService {
     List<String>? colors,
     String? tone,
     List<String>? exportTypes,
+    String? festivalType,
   }) async {
     return _post('/api/create-creatives', {
       'restaurant_id': restaurantId,
       'dishes': dishes,
       'formats': formats,
       'export_types': exportTypes ?? ['png'],
+      // Send both at root and branding to be safe
+      'festival_type': festivalType,
       'branding': {
         'campaign_type': campaignType,
         'platform': platform,
         'colors': colors ?? ['#FF6B35', '#2E4057'],
         'tone': tone ?? 'casual',
+        'festival_type': festivalType,
       },
     });
   }

@@ -39,7 +39,7 @@ CREATE INDEX IF NOT EXISTS idx_menu_bestseller ON menu_items(is_bestseller) WHER
 CREATE TABLE IF NOT EXISTS campaigns (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
-  campaign_type TEXT NOT NULL CHECK (campaign_type IN ('daily', 'new_arrivals', 'weekend', 'festive', 'combo')),
+  campaign_type TEXT NOT NULL CHECK (campaign_type IN ('daily', 'new_arrivals', 'festive', 'combo')),
   platform TEXT NOT NULL CHECK (platform IN ('instagram', 'facebook', 'whatsapp')),
   status TEXT DEFAULT 'processing' CHECK (status IN ('processing', 'completed', 'failed')),
   selected_dishes JSONB DEFAULT '[]',

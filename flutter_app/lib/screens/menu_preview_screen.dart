@@ -228,7 +228,7 @@ class _MenuPreviewScreenState extends State<MenuPreviewScreen> {
                           color: Colors.black.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Text('₹${item.price!.toStringAsFixed(0)}',
+                        child: Text(item.formattedPrice,
                             style: const TextStyle(
                                 color: Color(0xFFFF6B35),
                                 fontSize: 12,

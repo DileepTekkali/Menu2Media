@@ -20,14 +20,6 @@ router.post('/select-content', async (req, res) => {
 
     let query = supabase.from('menu_items').select('*').eq('restaurant_id', restaurant_id);
 
-    if (campaign_type === 'weekend') {
-      query = query.in('category', ['Main Course', 'Starters']);
-    } else if (campaign_type === 'combo') {
-      query = query.gt('price', 0);
-    } else if (campaign_type === 'festive') {
-      query = query.in('category', ['Desserts', 'Main Course', 'Starters']);
-    }
-
     const { data: menuItems, error } = await query;
     if (error) throw error;
 
@@ -35,7 +27,21 @@ router.post('/select-content', async (req, res) => {
       return res.status(404).json({ success: false, error: 'No menu items found for this restaurant' });
     }
 
-    let selected = menuItems.sort((a, b) => contentScore(b, campaign_type) - contentScore(a, campaign_type));
+    // Filter items based on campaign type after fetching all (more lenient than SQL)
+    let filteredItems = menuItems;
+    if (campaign_type === 'combo' || campaign_type === 'combo_offer') {
+      filteredItems = menuItems.filter(item => Number(item.price) > 0);
+    } else if (campaign_type === 'festive' || campaign_type === 'festive_offer') {
+      const festiveCats = ['dessert', 'main', 'starter', 'sweet', 'biryani', 'special', 'platter'];
+      filteredItems = menuItems.filter(item => {
+        const cat = (item.category || '').toLowerCase();
+        return festiveCats.some(fc => cat.includes(festiveCat));
+      });
+      // Fallback if no matching categories
+      if (filteredItems.length === 0) filteredItems = menuItems.slice(0, 20);
+    }
+
+    let selected = filteredItems.sort((a, b) => contentScore(b, campaign_type) - contentScore(a, campaign_type));
 
     selected = selected.slice(0, Math.min(dish_count, 10));
 
@@ -193,7 +199,26 @@ router.post('/create-creatives', async (req, res) => {
     if (!dishes || !Array.isArray(dishes) || dishes.length === 0) {
       return res.status(400).json({ success: false, error: 'Dishes array is required' });
     }
-    const campaignType = branding.campaign_type || 'daily';
+    const rawCampaignType = req.body.campaign_type || branding.campaign_type || 'daily';
+    let campaignType = rawCampaignType.toLowerCase();
+    
+    // Normalize aliases
+    const typeMap = {
+      'daily': 'daily',
+      'daily_special': 'daily',
+      'daily_specials': 'daily',
+      'new_arrival': 'new_arrivals',
+      'new_arrivals': 'new_arrivals',
+      'festive': 'festive',
+      'festive_offer': 'festive',
+      'combo': 'combo',
+      'combo_offer': 'combo',
+  };
+    if (typeMap[campaignType]) {
+      campaignType = typeMap[campaignType];
+    }
+    
+    const festivalType = req.body.festival_type || branding.festival_type || null;
     if (!validateCampaignType(campaignType)) {
       return res.status(400).json({ success: false, error: 'Invalid campaign_type' });
     }
@@ -237,9 +262,41 @@ router.post('/create-creatives', async (req, res) => {
 
     if (campaignError) throw campaignError;
 
+    // PRE-FETCH LOGO: Optimize by fetching ONCE before the loop
+    let globalLogoBuffer = null;
+    const masterLogoUrl = restaurant?.logo_url || branding.logo_url;
+    if (masterLogoUrl) {
+      try {
+        const { fetchLogoBuffer } = require('../services/creativeBuilder');
+        globalLogoBuffer = await fetchLogoBuffer(masterLogoUrl);
+        console.log('Global logo pre-fetched for batch processing');
+      } catch (err) {
+        console.error('Failed to pre-fetch global logo:', err.message);
+      }
+    }
+
+    let generationQueue = dishes;
+    
+    // COMBO LOGIC: If it's a combo, we generate ONE creative for the set, not one per item
+    if (campaignType === 'combo') {
+      const comboName = dishes.map(d => d.name).join(' & ');
+      const comboPrice = dishes.reduce((sum, d) => sum + (Number(d.price) || 0), 0);
+      const comboDesc = `A special combo featuring: ${dishes.map(d => d.name).join(', ')}.`;
+      
+      generationQueue = [{
+        id: dishes[0].id, // Use valid UUID to prevent DB constraint violation
+        name: comboName,
+        description: comboDesc,
+        price: comboPrice,
+        dish_names: dishes.map(d => d.name), // for the prompt builder
+        is_combo: true
+      }];
+      console.log('Detected Combo Campaign: Flattening dishes into single creative with base ID:', dishes[0].id);
+    }
+
     const creatives = [];
 
-    for (const dish of dishes) {
+    for (const dish of generationQueue) {
       // Enrich dish with restaurant name for overlay
       const enrichedDish = {
         ...dish,
@@ -250,13 +307,11 @@ router.post('/create-creatives', async (req, res) => {
 
       for (const format of validFormats) {
         try {
-          // Map format to sizeType
-          const sizeTypeMap = {
-            'square': 'square',
-            'story': 'story', 
-            'landscape': 'landscape'
-          };
-          const sizeType = sizeTypeMap[format] || 'square';
+          // Map format to canonical sizeType for high-end prompts
+          const sizeType = format === 'square' ? '1:1' 
+                        : format === 'story' ? '4:5' 
+                        : format === 'landscape' ? '16:9' 
+                        : format;
           
           // Get image buffer - download from url or use buffer
           let imageBuffer = null;
@@ -273,11 +328,37 @@ router.post('/create-creatives', async (req, res) => {
           
           // If still no image, generate a new one for this format
           if (!imageBuffer) {
-            console.log(`Generating image for ${dish.name} (${format})`);
-            const generated = await imageGenerator.generateImage(
-              dish.name, dish.description, 3, campaignType, req.body.festival_type, sizeType
-            );
-            imageBuffer = generated.buffer;
+            console.log(`Generating image for ${dish.name} (${format}) campaignType=${campaignType} festivalType=${festivalType}`);
+            try {
+              const generated = await imageGenerator.generateImage(
+                dish.name,
+                dish.description,
+                3,
+                campaignType,
+                festivalType,
+                sizeType,
+                dish.dish_names // Pass array of names for combo prompts
+              );
+              if (generated && generated.success) {
+                imageBuffer = generated.buffer;
+              } else {
+                console.error(`Image generation failed for ${dish.name}: ${generated?.error}`);
+              }
+            } catch (genErr) {
+              console.error(`Image generation exception for ${dish.name}:`, genErr.message);
+            }
+          }
+
+          // If still no image after generation attempts, create a placeholder
+          if (!imageBuffer) {
+            console.warn(`No image available for ${dish.name}, using placeholder`);
+            try {
+              const placeholder = await imageGenerator.generateFoodPlaceholder(dish.name, 1080, 1080, campaignType);
+              imageBuffer = placeholder;
+            } catch (phErr) {
+              console.error(`Placeholder generation failed:`, phErr.message);
+              // Continue with null - creativeBuilder has fallback handling
+            }
           }
 
           const caption = {
@@ -286,13 +367,15 @@ router.post('/create-creatives', async (req, res) => {
             cta: dish.cta || 'Order Now!'
           };
 
-          const creative = await creativeBuilder.buildCreativeDailySpecial({
+          const creative = await creativeBuilder.buildCreative({
             dish: enrichedDish,
             format,
             imageBuffer,
             colors: brandColors,
             caption,
-            campaignType: campaignType
+            campaignType: campaignType,
+            festivalType: festivalType,
+            logoBuffer: globalLogoBuffer // Injected pre-fetched buffer
           });
 
           if (!creative.success) {
