@@ -107,13 +107,13 @@ function postTypeForCampaign(campaignType, item) {
 // POST /api/generate-captions
 router.post('/generate-captions', async (req, res) => {
   try {
-    const { dishes, tone = 'casual' } = req.body;
+    const { dishes, tone = 'casual', campaign_type = 'daily' } = req.body;
 
     if (!dishes || !Array.isArray(dishes) || dishes.length === 0) {
       return res.status(400).json({ success: false, error: 'Dishes array is required' });
     }
 
-    const captions = await aiProcessor.generateCaptions(dishes, tone);
+    const captions = await aiProcessor.generateCaptions(dishes, tone, campaign_type);
     res.json({ success: true, captions });
   } catch (error) {
     console.error('Generate captions error:', error);

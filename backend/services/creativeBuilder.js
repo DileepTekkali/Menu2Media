@@ -780,8 +780,8 @@ class CreativeBuilderService {
       }
 
       if (logoBuf) {
-        // Standard fixed logo size across all formats: 60x60
-        const logoSize = 60;
+        // Standard fixed logo size across all formats: 80x80
+        const logoSize = 80;
         let logoTop, logoLeft;
         if (format === 'story') {
            logoTop = 50;
@@ -790,7 +790,7 @@ class CreativeBuilderService {
            logoTop = 40;
            logoLeft = 40;
         } else { // square
-           logoTop = 55;
+           logoTop = 50;
            logoLeft = 40;
         }
         const resizedLogo = await sharp(logoBuf)
